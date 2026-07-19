@@ -1,0 +1,76 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+
+# Virtual Environment
+venv/
+.venv/
+env/
+
+# Environment Variables
+.env
+.env.*
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Python Cache
+.pytest_cache/
+.mypy_cache/
+
+# VS Code
+.vscode/
+
+# IntelliJ
+.idea/
+
+# Mac
+.DS_Store
+
+# Windows
+Thumbs.db
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# React
+build/
+dist/
+
+# Mongo
+*.wt
+*.lock
+
+# Models
+models/
+checkpoints/
+
+# Vector Database
+faiss_index/
+vector_store/
+chroma_db/
+
+# Dataset
+datasets/
+data/
+*.csv
+*.jsonl
+*.parquet
+
+# Logs
+logs/
+*.log
+
+# Temporary
+temp/
+tmp/
+
+# OS
+desktop.ini
