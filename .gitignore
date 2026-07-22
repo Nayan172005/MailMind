@@ -57,8 +57,9 @@ faiss_index/
 vector_store/
 chroma_db/
 
-# Dataset
-datasets/
+# Dataset artifacts
+datasets/raw/
+datasets/processed/
 data/
 *.csv
 *.jsonl
