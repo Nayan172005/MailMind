@@ -49,7 +49,7 @@ dist/
 *.lock
 
 # Models
-models/
+# models/
 checkpoints/
 
 # Vector Database
@@ -58,12 +58,13 @@ vector_store/
 chroma_db/
 
 # Dataset artifacts
-datasets/raw/
-datasets/processed/
-data/
-*.csv
-*.jsonl
-*.parquet
+# datasets/
+# datasets/raw/
+# datasets/processed/
+# data/
+# *.csv
+# *.jsonl
+# *.parquet
 
 # Logs
 logs/
