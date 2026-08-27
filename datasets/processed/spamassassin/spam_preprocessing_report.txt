@@ -1,0 +1,24 @@
+SpamAssassin Preprocessing Complete
+===============================
+
+Total Emails              : 5,826
+Successfully Parsed       : 5,787
+Failed / Skipped          : 39
+Recovered Emails          : 3,980
+
+Spam                      : 1,891
+Ham                       : 3,896
+Missing Subject           : 24
+Emails Containing URLs    : 5,310
+
+Average Body Length       : 2,849 chars
+Average Words             : 343
+
+Malformed Emails          : 3,980
+Malformed Header Lines    : 3,980
+
+Saved
+
+datasets\processed\spam_processed.parquet
+datasets\processed\spam_processed.csv
+datasets\processed\failed_emails.csv
