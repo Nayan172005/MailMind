@@ -1,0 +1,1 @@
+"""MailMind API package."""
