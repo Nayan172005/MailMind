@@ -1,0 +1,94 @@
+[
+    {
+        "query": "Find emails about my placement interviews",
+        "expected_keywords": ["placement", "interview", "drive", "CDC"],
+        "category": "placement"
+    },
+    {
+        "query": "Show me emails related to NPTEL",
+        "expected_keywords": ["NPTEL", "course", "certificate"],
+        "category": "academic"
+    },
+    {
+        "query": "When is my Microsoft assessment?",
+        "expected_keywords": ["Microsoft", "assessment", "test", "online"],
+        "category": "placement"
+    },
+    {
+        "query": "What documents do I need for the placement test?",
+        "expected_keywords": ["resume", "certificate", "ID", "mark sheet", "photo"],
+        "category": "placement"
+    },
+    {
+        "query": "Find emails about internships",
+        "expected_keywords": ["internship", "intern", "opportunity"],
+        "category": "placement"
+    },
+    {
+        "query": "Show me emails about online tests",
+        "expected_keywords": ["online test", "assessment", "test", "exam"],
+        "category": "placement"
+    },
+    {
+        "query": "Find emails about registration deadlines",
+        "expected_keywords": ["registration", "deadline", "register", "last date"],
+        "category": "academic"
+    },
+    {
+        "query": "What venue was mentioned for the online test?",
+        "expected_keywords": ["venue", "auditorium", "hall", "room", "SJT"],
+        "category": "placement"
+    },
+    {
+        "query": "Find my security alert emails",
+        "expected_keywords": ["security", "alert", "sign-in", "password"],
+        "category": "security"
+    },
+    {
+        "query": "Show emails about exam schedule",
+        "expected_keywords": ["exam", "schedule", "test", "CAT", "FAT"],
+        "category": "academic"
+    },
+    {
+        "query": "Find emails from CDC",
+        "expected_keywords": ["CDC", "Career Development", "placement"],
+        "category": "placement"
+    },
+    {
+        "query": "Emails about Infosys",
+        "expected_keywords": ["Infosys", "PPT", "test"],
+        "category": "placement"
+    },
+    {
+        "query": "Find emails about assignment submissions",
+        "expected_keywords": ["assignment", "submission", "submit", "deadline"],
+        "category": "academic"
+    },
+    {
+        "query": "Show me emails about Google account",
+        "expected_keywords": ["Google", "account", "security", "sign-in"],
+        "category": "security"
+    },
+    {
+        "query": "Tell me about NASA space missions",
+        "expected_keywords": [],
+        "category": "irrelevant",
+        "expect_not_found": true
+    },
+    {
+        "query": "What is the recipe for chocolate cake?",
+        "expected_keywords": [],
+        "category": "irrelevant",
+        "expect_not_found": true
+    },
+    {
+        "query": "Find emails about Pixel Compute Technologies",
+        "expected_keywords": ["Pixel Compute", "selection", "interview"],
+        "category": "placement"
+    },
+    {
+        "query": "Show me emails about formal dress requirements",
+        "expected_keywords": ["formal", "dress", "headphones", "resume"],
+        "category": "placement"
+    }
+]
