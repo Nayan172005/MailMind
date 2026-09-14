@@ -1,0 +1,99 @@
+[
+  {
+    "query": "NPTEL course registration",
+    "category": "academic",
+    "expected_message_ids": ["19f8398e76ddf956", "19f7f717d17179eb", "19f73475d7c64216"],
+    "expected_keywords": ["NPTEL", "course", "registration"]
+  },
+  {
+    "query": "placement interviews",
+    "category": "placement",
+    "expected_message_ids": ["19ecb1d09c113c16", "19eb02dc5d4acd27", "19ed0235344dd96b"],
+    "expected_keywords": ["placement", "interview", "CDC"]
+  },
+  {
+    "query": "emails about upcoming online tests and assessments",
+    "category": "placement",
+    "expected_message_ids": ["19f8840a933d87da", "19f84321b3644afd", "19f7dc38270447c6", "19f73dc3c81faa01"],
+    "expected_keywords": ["online test", "assessment", "scheduled"]
+  },
+  {
+    "query": "When is my Microsoft assessment?",
+    "category": "placement",
+    "expected_message_ids": ["19bb5a81a1c389ec", "19bb5a49f6c00e3a", "19b973b78c7602fb"],
+    "expected_keywords": ["Microsoft", "assessment", "online test"]
+  },
+  {
+    "query": "most recent placement company",
+    "category": "placement_temporal",
+    "expected_message_ids": ["19f84cdb2b89676e", "19f7e795f05766e0", "19f7e5b3352ba238", "19f6f7cf92439794"],
+    "expected_keywords": ["placement", "internship", "2027 Batch"]
+  },
+  {
+    "query": "Nokia online test",
+    "category": "placement",
+    "expected_message_ids": ["19ebbe31cb35a6ce", "19ebbc88864a01f7", "19ea27c9ea15e4b4", "19e97c22fc8aa4bc"],
+    "expected_keywords": ["NOKIA", "online test"]
+  },
+  {
+    "query": "Tata Electronics online test",
+    "category": "placement",
+    "expected_message_ids": ["19e722b6233a1d56", "19e6ca9f465dbed5"],
+    "expected_keywords": ["Tata", "online test"]
+  },
+  {
+    "query": "VISA online test",
+    "category": "placement",
+    "expected_message_ids": ["19a95657a987363b", "199be2ad06dc42bd", "199516fdd79d2898", "1993ccdaa6df9e6b"],
+    "expected_keywords": ["VISA", "online test"]
+  },
+  {
+    "query": "Optum online test assessment",
+    "category": "placement",
+    "expected_message_ids": ["1999f0ad6d6c050c", "1999a5bf172c03ef", "199be2da0a6e53da"],
+    "expected_keywords": ["Optum", "assessment", "online test"]
+  },
+  {
+    "query": "Pixel Compute online test venue",
+    "category": "placement",
+    "expected_message_ids": ["19f83fea04ddf03f", "19f7dc38270447c6"],
+    "expected_keywords": ["Pixel Compute", "online test", "PRP 717"]
+  },
+  {
+    "query": "Infosys PPT online test Anna auditorium",
+    "category": "placement",
+    "expected_message_ids": ["19f89035dbd3de18", "19f84321b3644afd", "19f83724846a9905", "19f7f8cafecc0ba7"],
+    "expected_keywords": ["Infosys", "PPT", "Online Test", "Anna auditorium"]
+  },
+  {
+    "query": "TCS pre-placement talk placement policy orientation",
+    "category": "placement",
+    "expected_message_ids": ["19f5f9b792deadc7", "19f5f50a768dce6d"],
+    "expected_keywords": ["TCS", "Pre-placement Talk", "Placement Policy"]
+  },
+  {
+    "query": "emails from CDC about placement registration",
+    "category": "placement",
+    "expected_message_ids": ["19f83a92b566c8b0", "19f7ef15ff978fa6", "19f7e795f05766e0", "19f6a80e217ae80c"],
+    "expected_keywords": ["CDC", "placement", "registration"]
+  },
+  {
+    "query": "Google security alert sign in",
+    "category": "security",
+    "expected_message_ids": ["19f895bd054a1336"],
+    "expected_keywords": ["Security alert", "sign-in", "Google"]
+  },
+  {
+    "query": "Honeywell campus connect hackathon",
+    "category": "placement",
+    "expected_message_ids": ["19f848c57d7a26a8"],
+    "expected_keywords": ["Honeywell", "Hackathon"]
+  },
+  {
+    "query": "recipe for chocolate cake with walnuts",
+    "category": "irrelevant",
+    "expected_message_ids": [],
+    "expected_keywords": [],
+    "expect_not_found": true
+  }
+]

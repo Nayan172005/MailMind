@@ -5,12 +5,15 @@ Text processing helpers, token counting, and logging setup.
 """
 
 import logging
+import os
 import re
 
 
 def get_logger(name: str) -> logging.Logger:
     """Create a configured logger."""
     logger = logging.getLogger(f"mailmind.{name}")
+    level_name = os.getenv("MAILMIND_LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, logging.INFO)
     if not logger.handlers:
         handler = logging.StreamHandler()
         handler.setFormatter(
@@ -20,7 +23,7 @@ def get_logger(name: str) -> logging.Logger:
             )
         )
         logger.addHandler(handler)
-        logger.setLevel(logging.INFO)
+    logger.setLevel(level)
     return logger
 
 
