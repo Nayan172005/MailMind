@@ -23,7 +23,7 @@ from rag.pipeline import RAGPipeline
 
 st.set_page_config(
     page_title="MailMind",
-    page_icon="📧",
+    # page_icon="M",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -97,11 +97,11 @@ if "conversation_history" not in st.session_state:
 # ─── Sidebar ──────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown("## ⚙️ Settings")
+    st.markdown("##  Settings")
 
     mode = st.selectbox(
         "Mode",
-        ["🔍 Search", "❓ Ask", "📝 Summarize", "💬 Conversation"],
+        [" Search", " Ask", " Summarize", " Conversation"],
         index=1,
     )
 
@@ -109,15 +109,15 @@ with st.sidebar:
 
     st.markdown("---")
 
-    st.markdown("## 📊 Index Status")
+    st.markdown("## Index Status")
     if index_loaded:
         status = pipeline.get_index_status()
-        st.success(f"✅ Index loaded")
+        st.success(f" Index loaded")
         st.metric("Total Vectors", status.total_vectors)
         st.metric("Total Emails", status.total_emails)
     else:
-        st.warning("⚠️ No index loaded")
-        if st.button("🔨 Build Index"):
+        st.warning(" No index loaded")
+        if st.button(" Build Index"):
             with st.spinner("Building index... This may take a few minutes."):
                 try:
                     pipeline.build_index(force_rebuild=True)
@@ -128,8 +128,8 @@ with st.sidebar:
 
     st.markdown("---")
 
-    if mode == "💬 Conversation":
-        if st.button("🗑️ Clear History"):
+    if mode == " Conversation":
+        if st.button(" Clear History"):
             pipeline.clear_conversation(st.session_state.session_id)
             st.session_state.conversation_history = []
             st.rerun()
@@ -145,14 +145,14 @@ with st.sidebar:
 
 # ─── Main Content ────────────────────────────────────────────────────
 
-st.markdown('<p class="main-header">📧 MailMind</p>', unsafe_allow_html=True)
+st.markdown('<p class="main-header"> MailMind</p>', unsafe_allow_html=True)
 st.markdown(
     '<p class="sub-header">Intelligent Email Search & Question Answering</p>',
     unsafe_allow_html=True,
 )
 
 if not index_loaded:
-    st.info("👆 Please build the index using the sidebar button first.")
+    st.info(" Please build the index using the sidebar button first.")
     st.stop()
 
 
@@ -169,7 +169,7 @@ def display_results(results):
             col1, col2 = st.columns([0.85, 0.15])
             with col1:
                 st.markdown(f"**{i}. {r.subject or '(No Subject)'}**")
-                st.markdown(f"📤 {r.sender_name or r.sender_email} · 📅 {r.date}")
+                st.markdown(f" {r.sender_name or r.sender_email} ·  {r.date}")
             with col2:
                 score_pct = int(r.score * 100)
                 st.markdown(
@@ -186,7 +186,7 @@ def display_results(results):
 
 # ─── Query Input ──────────────────────────────────────────────────────
 
-if mode == "💬 Conversation":
+if mode == " Conversation":
     # Show conversation history
     for msg in st.session_state.conversation_history:
         role = msg["role"]
@@ -236,17 +236,17 @@ else:
 
     col1, col2 = st.columns([0.15, 0.85])
     with col1:
-        submit = st.button("🚀 Go", use_container_width=True)
+        submit = st.button(" Go", use_container_width=True)
 
     if submit and query:
         with st.spinner("Processing..."):
             try:
-                if mode == "🔍 Search":
+                if mode == " Search":
                     response = pipeline.search(query, top_k=top_k)
                     st.markdown(f"### Results ({response.total})")
                     display_results(response.results)
 
-                elif mode == "❓ Ask":
+                elif mode == " Ask":
                     response = pipeline.ask(query, top_k=top_k)
 
                     st.markdown("### Answer")
@@ -257,7 +257,7 @@ else:
                         with st.expander(f"📎 Sources ({len(response.sources)} emails)"):
                             display_results(response.sources)
 
-                elif mode == "📝 Summarize":
+                elif mode == " Summarize":
                     response = pipeline.summarize(query=query, top_k=top_k)
 
                     st.markdown("### Summary")

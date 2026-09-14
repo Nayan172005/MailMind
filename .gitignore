@@ -5,6 +5,7 @@ __pycache__/
 *.pyd
 *.so
 *.egg-info/
+*anaconda_projects
 
 # Virtual Environment
 venv/

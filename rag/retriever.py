@@ -2,20 +2,94 @@
 MailMind RAG — Retriever
 
 High-level retrieval logic:
-1. Embed query
-2. Search FAISS
-3. Filter by similarity threshold
-4. Deduplicate by message_id (keep best chunk per email)
-5. Return ranked results
+1. Analyze query intent/entities/temporal signals
+2. Embed query
+3. Search FAISS with deeper candidate depth
+4. Filter by semantic similarity threshold
+5. Deduplicate by message_id
+6. Metadata-aware reranking
+7. Return ranked results
 """
 
 from rag.config import settings
 from rag.schemas import SearchResult
 from rag.embedder import embed_query
+from rag.query_analyzer import analyze_query
+from rag.reranker import rerank_candidates
 from rag.vector_store import VectorStore
 from rag.utils import get_logger, truncate_text
 
 logger = get_logger("retriever")
+
+
+def _final_k(top_k: int | None) -> int:
+    return top_k or settings.FINAL_RETRIEVAL_K or settings.TOP_K
+
+
+def _initial_k(final_k: int, deduplicate: bool) -> int:
+    if deduplicate:
+        return max(settings.INITIAL_RETRIEVAL_K, final_k * 3)
+    return max(settings.INITIAL_RETRIEVAL_K, final_k)
+
+
+def _to_search_result(candidate: dict) -> SearchResult:
+    return SearchResult(
+        message_id=candidate["message_id"],
+        subject=candidate.get("subject", ""),
+        sender_name=candidate.get("sender_name", ""),
+        sender_email=candidate.get("sender_email", ""),
+        date=candidate.get("date", ""),
+        score=round(float(candidate.get("final_score", candidate.get("score", 0.0))), 4),
+        snippet=truncate_text(
+            candidate.get("body_snippet", candidate.get("text", "")),
+            300,
+        ),
+    )
+
+
+def _retrieve_ranked_candidates(
+    query: str,
+    store: VectorStore,
+    top_k: int | None = None,
+    similarity_threshold: float | None = None,
+    deduplicate: bool = True,
+) -> list[dict]:
+    if not query.strip():
+        logger.warning("Empty query received")
+        return []
+
+    if not store.is_loaded:
+        raise RuntimeError("Vector store is not loaded.")
+
+    final_k = _final_k(top_k)
+    initial_k = _initial_k(final_k, deduplicate)
+    threshold = similarity_threshold if similarity_threshold is not None else settings.SIMILARITY_THRESHOLD
+
+    analysis = analyze_query(query)
+    query_embedding = embed_query(query)
+    raw_results = store.search(query_embedding, top_k=initial_k)
+    filtered = [r for r in raw_results if r["score"] >= threshold]
+
+    if not filtered:
+        logger.info(f"No results above threshold {threshold} for: {truncate_text(query, 80)}")
+        return []
+
+    ranked = rerank_candidates(
+        query=query,
+        analysis=analysis,
+        candidates=filtered,
+        final_k=final_k,
+        deduplicate=deduplicate,
+    )
+
+    logger.info(
+        "Retrieved %d results for: %s (initial=%d, filtered=%d)",
+        len(ranked),
+        truncate_text(query, 60),
+        len(raw_results),
+        len(filtered),
+    )
+    return ranked
 
 
 def retrieve(
@@ -38,65 +112,14 @@ def retrieve(
     Returns:
         List of SearchResult objects, sorted by descending score.
     """
-    if not query.strip():
-        logger.warning("Empty query received")
-        return []
-
-    if not store.is_loaded:
-        raise RuntimeError("Vector store is not loaded.")
-
-    top_k = top_k or settings.TOP_K
-    threshold = similarity_threshold if similarity_threshold is not None else settings.SIMILARITY_THRESHOLD
-
-    # Retrieve more candidates before dedup to ensure we get enough unique emails
-    search_k = top_k * 3 if deduplicate else top_k
-
-    # 1. Embed query
-    query_embedding = embed_query(query)
-
-    # 2. Search FAISS
-    raw_results = store.search(query_embedding, top_k=search_k)
-
-    # 3. Filter by similarity threshold
-    filtered = [r for r in raw_results if r["score"] >= threshold]
-
-    if not filtered:
-        logger.info(f"No results above threshold {threshold} for: {truncate_text(query, 80)}")
-        return []
-
-    # 4. Deduplicate by message_id (keep highest-scoring chunk per email)
-    if deduplicate:
-        seen: dict[str, dict] = {}
-        for r in filtered:
-            msg_id = r["message_id"]
-            if msg_id not in seen or r["score"] > seen[msg_id]["score"]:
-                seen[msg_id] = r
-        deduped = sorted(seen.values(), key=lambda x: x["score"], reverse=True)
-    else:
-        deduped = filtered
-
-    # 5. Trim to top_k
-    final = deduped[:top_k]
-
-    # 6. Convert to SearchResult
-    results = []
-    for r in final:
-        results.append(
-            SearchResult(
-                message_id=r["message_id"],
-                subject=r.get("subject", ""),
-                sender_name=r.get("sender_name", ""),
-                sender_email=r.get("sender_email", ""),
-                date=r.get("date", ""),
-                score=round(r["score"], 4),
-                snippet=truncate_text(r.get("body_snippet", r.get("text", "")), 300),
-            )
-        )
-
-    logger.info(
-        f"Retrieved {len(results)} results for: {truncate_text(query, 60)}"
+    ranked = _retrieve_ranked_candidates(
+        query=query,
+        store=store,
+        top_k=top_k,
+        similarity_threshold=similarity_threshold,
+        deduplicate=deduplicate,
     )
-    return results
+    return [_to_search_result(candidate) for candidate in ranked]
 
 
 def retrieve_with_context(
@@ -111,36 +134,25 @@ def retrieve_with_context(
     Returns:
         (results, context_text) — the context text is formatted for the prompt.
     """
-    results = retrieve(query, store, top_k, similarity_threshold)
+    ranked = _retrieve_ranked_candidates(query, store, top_k, similarity_threshold)
+    results = [_to_search_result(candidate) for candidate in ranked]
 
     if not results:
         return results, ""
 
-    # Build context from the full chunk texts (not just snippets)
-    # We need the full text from metadata for generation quality
+    # Build context from the selected reranked chunks, preserving useful
+    # metadata for grounded generation.
     context_parts = []
-    for i, result in enumerate(results, 1):
-        # Get the full chunk text from the store metadata
-        chunks = store.get_chunks_by_message_id(result.message_id)
-        if chunks:
-            # Use the best chunk's full text
-            best_chunk = max(chunks, key=lambda c: c.get("score", 0)) if len(chunks) > 1 else chunks[0]
-            context_parts.append(
-                f"--- Email {i} ---\n"
-                f"Subject: {result.subject}\n"
-                f"From: {result.sender_name} <{result.sender_email}>\n"
-                f"Date: {result.date}\n"
-                f"Relevance Score: {result.score}\n\n"
-                f"{best_chunk.get('text', result.snippet)}\n"
-            )
-        else:
-            context_parts.append(
-                f"--- Email {i} ---\n"
-                f"Subject: {result.subject}\n"
-                f"From: {result.sender_name} <{result.sender_email}>\n"
-                f"Date: {result.date}\n\n"
-                f"{result.snippet}\n"
-            )
+    for i, (result, candidate) in enumerate(zip(results, ranked), 1):
+        context_parts.append(
+            f"--- Email {i} ---\n"
+            f"Message ID: {result.message_id}\n"
+            f"Subject: {result.subject}\n"
+            f"From: {result.sender_name} <{result.sender_email}>\n"
+            f"Date: {result.date}\n"
+            f"Relevance Score: {result.score}\n\n"
+            f"{candidate.get('text', result.snippet)}\n"
+        )
 
     context_text = "\n".join(context_parts)
     return results, context_text
