@@ -11,6 +11,7 @@ Index layout on disk:
 """
 
 import json
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -32,6 +33,7 @@ class VectorStore:
         self.index: Optional[faiss.Index] = None
         self.metadata: list[dict] = []  # list indexed by FAISS vector ID
         self._indexed_message_ids: set[str] = set()
+        self._lock = threading.Lock()  # protects index+metadata mutations
 
     @property
     def is_loaded(self) -> bool:
@@ -101,40 +103,41 @@ class VectorStore:
         if not self.is_loaded:
             raise RuntimeError("No index loaded. Call build_index() or load() first.")
 
-        # Filter out already-indexed emails
-        novel_chunks = [
-            c for c in new_chunks
-            if c.message_id not in self._indexed_message_ids
-        ]
+        with self._lock:
+            # Filter out already-indexed emails
+            novel_chunks = [
+                c for c in new_chunks
+                if c.message_id not in self._indexed_message_ids
+            ]
 
-        if not novel_chunks:
-            logger.info("No new emails to index.")
-            return 0
+            if not novel_chunks:
+                logger.info("No new emails to index.")
+                return 0
 
-        logger.info(f"Adding {len(novel_chunks)} new chunks to index...")
+            logger.info(f"Adding {len(novel_chunks)} new chunks to index...")
 
-        texts = [chunk.text for chunk in novel_chunks]
-        embeddings = embed_texts(texts)
+            texts = [chunk.text for chunk in novel_chunks]
+            embeddings = embed_texts(texts)
 
-        base_id = len(self.metadata)
-        self.index.add(embeddings.astype(np.float32))
+            base_id = len(self.metadata)
+            self.index.add(embeddings.astype(np.float32))
 
-        for i, chunk in enumerate(novel_chunks):
-            self.metadata.append({
-                "vector_id": base_id + i,
-                "message_id": chunk.message_id,
-                "chunk_id": chunk.chunk_id,
-                "subject": chunk.subject,
-                "sender_name": chunk.sender_name,
-                "sender_email": chunk.sender_email,
-                "date": chunk.date,
-                "text": chunk.text,
-                "body_snippet": chunk.body_snippet,
-            })
-            self._indexed_message_ids.add(chunk.message_id)
+            for i, chunk in enumerate(novel_chunks):
+                self.metadata.append({
+                    "vector_id": base_id + i,
+                    "message_id": chunk.message_id,
+                    "chunk_id": chunk.chunk_id,
+                    "subject": chunk.subject,
+                    "sender_name": chunk.sender_name,
+                    "sender_email": chunk.sender_email,
+                    "date": chunk.date,
+                    "text": chunk.text,
+                    "body_snippet": chunk.body_snippet,
+                })
+                self._indexed_message_ids.add(chunk.message_id)
 
-        logger.info(f"Index updated: {self.index.ntotal} total vectors")
-        return len(novel_chunks)
+            logger.info(f"Index updated: {self.index.ntotal} total vectors")
+            return len(novel_chunks)
 
     def search(
         self,
@@ -176,18 +179,35 @@ class VectorStore:
         if not self.is_loaded:
             raise RuntimeError("No index to save.")
 
-        index_dir = Path(index_dir) if index_dir else settings.index_abs_dir
-        index_dir.mkdir(parents=True, exist_ok=True)
+        with self._lock:
+            index_dir = Path(index_dir) if index_dir else settings.index_abs_dir
+            index_dir.mkdir(parents=True, exist_ok=True)
 
-        faiss_path = index_dir / "emails.faiss"
-        meta_path = index_dir / "metadata.json"
+            faiss_path = index_dir / "emails.faiss"
+            meta_path = index_dir / "metadata.json"
 
-        faiss.write_index(self.index, str(faiss_path))
+            # Write metadata to temp file first, then rename for atomicity
+            meta_tmp = index_dir / "metadata.json.tmp"
+            faiss_tmp = index_dir / "emails.faiss.tmp"
 
-        with open(meta_path, "w", encoding="utf-8") as f:
-            json.dump(self.metadata, f, ensure_ascii=False)
+            faiss.write_index(self.index, str(faiss_tmp))
 
-        logger.info(f"Index saved to {index_dir}")
+            with open(meta_tmp, "w", encoding="utf-8") as f:
+                json.dump(self.metadata, f, ensure_ascii=False)
+
+            # Atomic rename (best-effort on Windows)
+            import os
+            if faiss_path.exists():
+                os.replace(str(faiss_tmp), str(faiss_path))
+            else:
+                faiss_tmp.rename(faiss_path)
+
+            if meta_path.exists():
+                os.replace(str(meta_tmp), str(meta_path))
+            else:
+                meta_tmp.rename(meta_path)
+
+            logger.info(f"Index saved to {index_dir}")
 
     def load(self, index_dir: str | Path | None = None) -> None:
         """Load a persisted FAISS index and metadata from disk."""

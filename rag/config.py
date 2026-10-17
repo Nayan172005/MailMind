@@ -53,6 +53,24 @@ class Settings(BaseSettings):
     # --- Conversation ---
     MAX_CONVERSATION_TURNS: int = 5
 
+    # --- Gmail Integration ---
+    GMAIL_CLIENT_ID: str = ""
+    GMAIL_CLIENT_SECRET: str = ""
+    GMAIL_REDIRECT_URI: str = "http://localhost:8000/gmail/oauth/callback"
+    GMAIL_PUBSUB_TOPIC: str = ""  # e.g. projects/<project>/topics/<topic>
+    GMAIL_PUBSUB_PROJECT: str = ""
+    GMAIL_PUBSUB_AUDIENCE: str = ""  # Expected OIDC audience for Pub/Sub push
+    GMAIL_PUBSUB_SERVICE_ACCOUNT: str = ""  # Expected Pub/Sub service-account email
+    GMAIL_PUBSUB_VERIFY_TOKEN: bool = True  # Enforce OIDC token verification
+    GMAIL_SCOPES: str = "https://www.googleapis.com/auth/gmail.readonly"
+    GMAIL_INITIAL_SYNC_DAYS: int = 7
+    GMAIL_INITIAL_SYNC_MAX: int = 50
+    GMAIL_WATCH_EXPIRATION_BUFFER: int = 3600  # seconds before expiry to renew
+    GMAIL_TOKEN_PATH: str = "data/gmail/token.json"
+    GMAIL_STATE_PATH: str = "data/gmail/state.json"
+    GMAIL_POLL_INTERVAL: int = 60  # polling fallback interval in seconds
+    GMAIL_ENABLED: bool = False  # set True when credentials are configured
+
     @property
     def dataset_abs_path(self) -> Path:
         """Absolute path to the email dataset."""
@@ -76,6 +94,20 @@ class Settings(BaseSettings):
     @property
     def metadata_path(self) -> Path:
         return self.index_abs_dir / "metadata.json"
+
+    @property
+    def gmail_token_abs_path(self) -> Path:
+        p = Path(self.GMAIL_TOKEN_PATH)
+        if p.is_absolute():
+            return p
+        return self.PROJECT_ROOT / p
+
+    @property
+    def gmail_state_abs_path(self) -> Path:
+        p = Path(self.GMAIL_STATE_PATH)
+        if p.is_absolute():
+            return p
+        return self.PROJECT_ROOT / p
 
     class Config:
         env_file = ".env"

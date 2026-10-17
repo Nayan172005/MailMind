@@ -13,6 +13,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from rag.pipeline import RAGPipeline
+from rag.config import settings
 from rag.utils import get_logger
 
 logger = get_logger("api")
@@ -32,6 +33,22 @@ async def lifespan(app: FastAPI):
         logger.warning(
             "No FAISS index found. Use POST /index/build to create one."
         )
+
+    # Pre-load BiLSTM classifier for Gmail ingestion (non-blocking)
+    if settings.GMAIL_ENABLED:
+        try:
+            from api.gmail.ingestion import ensure_classifier_loaded
+            ensure_classifier_loaded()
+        except Exception as e:
+            logger.warning(f"Gmail classifier pre-load skipped: {e}")
+
+        # Renew Gmail watch if needed
+        try:
+            from api.gmail.watcher import renew_watch_if_needed
+            renew_watch_if_needed()
+        except Exception as e:
+            logger.warning(f"Gmail watch renewal skipped: {e}")
+
     yield
     logger.info("Shutting down MailMind API.")
 
@@ -68,6 +85,10 @@ app.include_router(summarize_router, tags=["Summarization"])
 app.include_router(conversation_router, tags=["Conversation"])
 app.include_router(index_router, tags=["Index Management"])
 app.include_router(email_router, tags=["Email"])
+
+# Gmail integration routes
+from api.routes.gmail import router as gmail_router
+app.include_router(gmail_router)
 
 
 @app.get("/", tags=["Health"])
