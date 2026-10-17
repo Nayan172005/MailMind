@@ -78,3 +78,13 @@ tmp/
 
 # OS
 desktop.ini
+
+# Gmail credentials / tokens
+credentials.json
+client_secret*.json
+data/gmail/
+token.json
+*.token.json
+
+# Local runner shim
+powershell.cmd
