@@ -191,7 +191,7 @@ class RAGPipeline:
                 sources=[],
             )
 
-        answer = generate_answer(query, context)
+        answer = generate_answer(query, context, max_sources=len(results))
 
         return AskResponse(
             query=query,

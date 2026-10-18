@@ -37,7 +37,7 @@ class VectorStore:
 
     @property
     def is_loaded(self) -> bool:
-        return self.index is not None and len(self.metadata) > 0
+        return self.index is not None
 
     @property
     def total_vectors(self) -> int:

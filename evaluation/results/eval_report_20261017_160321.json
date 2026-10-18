@@ -1,0 +1,225 @@
+{
+  "benchmark_version": "1.0.0",
+  "dataset_name": "MailMind Evaluation Benchmark (Frozen)",
+  "split_evaluated": "dev",
+  "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "gemini_model": "gemini-3.5-flash-lite",
+  "timestamp": 1792233168.0836797,
+  "coverage": {
+    "status": "ok",
+    "indexed_emails": 10782,
+    "total_queries": 14,
+    "total_judgments": 27,
+    "missing_ids_count": 0,
+    "missing_ids": [],
+    "queries_with_missing_docs": []
+  },
+  "rag": {
+    "summary": {
+      "queries_evaluated": 7,
+      "successful_evaluations": 7,
+      "mean_correctness": 0.786,
+      "mean_groundedness": 0.607,
+      "mean_relevance": 0.893,
+      "mean_citation_correctness": 0.679,
+      "mean_evidence_coverage": 0.762,
+      "abstention_accuracy": 1.0,
+      "total_unsupported_claims": 12,
+      "eval_method": "llm_judge"
+    },
+    "per_query": [
+      {
+        "query_id": "q01",
+        "query_text": "NPTEL course registration",
+        "category": "academic",
+        "generated_answer": "Based on your emails, enrollments and exam registrations are currently open for the Jan–Apr 2026 NPTEL courses, which begin on January 19, 2026 [Source 1]. Additionally, exam registration has been mentioned as open for Jan 2025 courses [Source 2] and July 2026 courses [Source 3]. If you need to cancel exams and receive a refund, the deadlines provided are:\n* February 28, 2025 at 5:00 PM for the Jan 2025 courses [Source 2].\n* August 14, 2026 at 5:00 PM for the July 2026 courses [Source 3]. Sources:\n- [Source 1] Subject: 'NPTEL Newsletter: NPTEL Courses Begin Jan 19, 2026 | Jan–Apr 2026 Semester' | From: NPTEL <onlinecourses@nptel.iitm.ac.in>\n- [Source 2] Subject: 'Reminder: NPTEL: Exam Registration is open now for Jan 2025 courses!' | From: <onlinecourses@nptel.iitm.ac.in>\n- [Source 3] Subject: 'NPTEL: Exam Registration is open now for July 2026 courses!' | From: <onlinecourses@nptel.iitm.ac.in>",
+        "reference_answer": "NPTEL course registration for the July 2026 session is open as announced by the Dean Academics. Students must follow the SWAYAM/NPTEL portal process and consult the approved course list from their department (e.g. SCOPE).",
+        "retrieved_sources_count": 5,
+        "retrieved_message_ids": [
+          "19bc632642ff68a7",
+          "194b17964d9222d9",
+          "19ed985d9e224f72",
+          "193d93f3a7deae18",
+          "18bd78a702e88c8d"
+        ],
+        "is_abstention_expected": false,
+        "did_abstain": false,
+        "abstention_correct": true,
+        "correctness_score": 0.5,
+        "groundedness_score": 0.25,
+        "relevance_score": 0.75,
+        "citation_correctness": 0.25,
+        "key_evidence_coverage": 0.0,
+        "unsupported_claims": [
+          "July 2026 courses [Source 3]",
+          "August 14, 2026 at 5:00 PM for the July 2026 courses [Source 3]",
+          "[Source 3]"
+        ],
+        "eval_method": "llm_judge",
+        "error": null
+      },
+      {
+        "query_id": "q03",
+        "query_text": "RoboWars workshop batch 2 registration freshers",
+        "category": "academic",
+        "generated_answer": "Registration for the RoboWars Workshop – Batch 2 is exclusively open to first-year (Fresher) students who missed registering for Batch 1 [Source 1]. Key details regarding the workshop and registration include:\n* **Date:** 23 July 2026 (Thursday) [Source 1]\n* **Time:** 9:30 AM – 5:00 PM [Source 1]\n* **Venue:** PRP A-Block, Room No. 156 [Source 1]\n* **Capacity & Basis:** Only 40 seats are available, and registrations are accepted on a first-come, first-served basis [Source 1].\n* **Team Requirements:** You must form a team of five students, including a Team Lead, and ensure your team is finalized before submitting the registration form [Source 1].\n* **Eligibility Rules:** It is exclusively for freshers who missed Batch 1; students who already registered for Batch 1 are not permitted to register for Batch 2 [Source 1].\n* **Registration Method:** You can register by scanning the QR code in the poster [Source 1].\n* **Benefits:** Participants will receive a Certificate of Participation and On Duty (OD) will be provided [Source 1]. Sources:\n[Source 1] Subject: 'Exclusive for Freshers | RoboWars Workshop – Batch 2 Registration Open (23 July 2026) - reg' | From: 'Director VIT Innovation' via B.Tech. - Comp Sci Engg 2023 Group, Vellore Campus <23bce@vitstudent.ac.in>",
+        "reference_answer": "RoboWars Workshop Batch 2 registration is open exclusively for freshers, scheduled for 23 July 2026.",
+        "retrieved_sources_count": 5,
+        "retrieved_message_ids": [
+          "19f87f26aff796c1",
+          "193ddbf6aa7d641f",
+          "19c8fc66e37078b1",
+          "19c6a8dda9d03b02",
+          "19d2866346254c91"
+        ],
+        "is_abstention_expected": false,
+        "did_abstain": false,
+        "abstention_correct": true,
+        "correctness_score": 1.0,
+        "groundedness_score": 0.5,
+        "relevance_score": 1.0,
+        "citation_correctness": 1.0,
+        "key_evidence_coverage": 1.0,
+        "unsupported_claims": [
+          "Only 40 seats are available, and registrations are accepted on a first-come, first-served basis",
+          "You can register by scanning the QR code in the poster",
+          "students who already registered for Batch 1 are not permitted to register for Batch 2"
+        ],
+        "eval_method": "llm_judge",
+        "error": null
+      },
+      {
+        "query_id": "q06",
+        "query_text": "FinTech program IIT Madras NPTEL newsletter",
+        "category": "academic",
+        "generated_answer": "The NPTEL newsletter regarding IIT Madras' FinTech program mentions the program and provides a link to master the future of finance with IIT Madras' FinTech Program [Source 1]. The provided link for the program is https://code.iitm.ac.in/fintech [Source 1]. Sources:\n[Source 1] Subject: 'NPTEL Newsletter: Master the Future of Finance with IIT Madras' FinTech Program' | From: NPTEL <onlinecourses@nptel.iitm.ac.in>",
+        "reference_answer": "The NPTEL newsletter announced the IIT Madras FinTech Program titled 'Master the Future of Finance'.",
+        "retrieved_sources_count": 5,
+        "retrieved_message_ids": [
+          "19f73f085c598a83",
+          "19cc323abe2f8ef9",
+          "191c0e318ba23aeb",
+          "197873631e3ce168",
+          "190343dfa2d06971"
+        ],
+        "is_abstention_expected": false,
+        "did_abstain": false,
+        "abstention_correct": true,
+        "correctness_score": 1.0,
+        "groundedness_score": 1.0,
+        "relevance_score": 1.0,
+        "citation_correctness": 1.0,
+        "key_evidence_coverage": 1.0,
+        "unsupported_claims": [],
+        "eval_method": "llm_judge",
+        "error": null
+      },
+      {
+        "query_id": "q10",
+        "query_text": "When is my Microsoft assessment?",
+        "category": "placement",
+        "generated_answer": "Based on your emails, there are multiple Microsoft online tests mentioned with different dates: * One Microsoft online test/assessment is scheduled for **21-Aug at 07.00 PM** [Source 2].\n* Another Microsoft online test is scheduled for **13-01-2026 at 7 PM** (with an active login window on 13th January at 07:00 PM and a duration of 75 minutes) [Source 3]. Sources:\n- [Source 1] Subject: 'You have been added to a class team in Microsoft Teams' | From: Microsoft Teams\n- [Source 2] Subject: 'Re: Microsoft summer internship registration 2027 Batch' | From: 'Helpdesk CDC' via B.Tech. - Comp Sci Engg 2023 Group, Vellore Campus\n- [Source 3] Subject: 'Re: Microsoft Summer Internship - 2027' | From: 'Helpdesk CDC' via B.Tech. - Comp Sci Engg 2023 Group, Vellore Campus",
+        "reference_answer": "Your Microsoft online assessment is scheduled according to the CDC test notification email, which contains the test window link and timing.",
+        "retrieved_sources_count": 5,
+        "retrieved_message_ids": [
+          "19504f303f8ea15c",
+          "198ccc15a6706a2d",
+          "19bb5a81a1c389ec",
+          "19bb5a49f6c00e3a",
+          "19aedc4703cbfc06"
+        ],
+        "is_abstention_expected": false,
+        "did_abstain": false,
+        "abstention_correct": true,
+        "correctness_score": 0.0,
+        "groundedness_score": 0.0,
+        "relevance_score": 0.5,
+        "citation_correctness": 0.0,
+        "key_evidence_coverage": 0.667,
+        "unsupported_claims": [
+          "One Microsoft online test/assessment is scheduled for 21-Aug at 07.00 PM",
+          "Another Microsoft online test is scheduled for 13-01-2026 at 7 PM",
+          "[Source 3]"
+        ],
+        "eval_method": "llm_judge",
+        "error": null
+      },
+      {
+        "query_id": "q27",
+        "query_text": "Honeywell campus connect hackathon",
+        "category": "placement",
+        "generated_answer": "Honeywell Technologies is inviting participation in the Campus Connect Hackathon 2026 [Source 2]. The event is open to B.E./B.Tech students graduating in 2027 from Computer Science, IT, IS, AI, ML, or related branches [Source 2]. ### Key Details & Instructions:\n* **Eligibility Criteria:** All B.Tech CSE branches and B.Tech IT, with a minimum of 60% or 6 CGPA in 10th, 12th, and UG [Source 2].\n* **Registration Requirements:** * You must register using your NEO PAT registered email ID; registrations submitted with any other email IDs will be considered invalid [Source 2]. * It is mandatory to register using both the Honeywell link and the Google Form link on or before the deadline [Source 2].\n* **Links Provided:** * Honeywell Registration Link: https://honeywelltechnologiescampusconnect.mycareernet.co/ [Source 2] * Google Form Link: https://forms.gle/Z46nJKddiLNQEJ4y8 [Source 2]\n* **Test Information:** The online test for the Honeywell Technologies Campus Connect Hackathon has been scheduled, though specific dates and times were not mentioned in the email body [Source 1, Source 2]. *** ### Sources:\n* [Source 1] Subject: 'Honeywell Technologies Campus Connect Hackathon - Register now 2027 Batch' | From: 'No Reply CDC Info' via VITIANS CDC Group, Vellore and Chennai Campus <vitianscdc2027@vitstudent.ac.in>\n* [Source 2] Subject: 'Honeywell Technologies Campus Connect Hackathon - Register now 2027 Batch' | From: 'No Reply CDC Info' via VITIANS CDC Group, Vellore and Chennai Campus <vitianscdc2027@vitstudent.ac.in>",
+        "reference_answer": "Honeywell Technologies launched the Campus Connect Hackathon inviting university students to register and compete.",
+        "retrieved_sources_count": 5,
+        "retrieved_message_ids": [
+          "19f848c57d7a26a8",
+          "19f7011a77ab78b9",
+          "1983fb43ea2e54d2",
+          "1983c652f7f13908",
+          "19d3d03c40568cf0"
+        ],
+        "is_abstention_expected": false,
+        "did_abstain": false,
+        "abstention_correct": true,
+        "correctness_score": 1.0,
+        "groundedness_score": 0.5,
+        "relevance_score": 1.0,
+        "citation_correctness": 0.5,
+        "key_evidence_coverage": 1.0,
+        "unsupported_claims": [
+          "with a minimum of 60% or 6 CGPA in 10th, 12th, and UG",
+          "It is mandatory to register using both the Honeywell link and the Google Form link on or before the deadline",
+          "Google Form Link: https://forms.gle/Z46nJKddiLNQEJ4y8"
+        ],
+        "eval_method": "llm_judge",
+        "error": null
+      },
+      {
+        "query_id": "q31",
+        "query_text": "Pixel Compute online test venue",
+        "category": "schedules_venues",
+        "generated_answer": "Students taking the Pixel Compute Technologies Pvt Ltd online test must attend the test only in the campus labs, specifically at PRP 717 on the Vellore campus [Source 1, Source 3]. The test link will be provided inside the labs only [Source 3]. Additionally, students who have both the Pixel and Infosys tests are instructed to attend the Pixel test and stay back in the PRP lab for the Infosys test [Source 1]. Sources:\n- [Source 1] Subject: 'Re: Pixel Compute Technologies Pvt Ltd online test is scheduled on 22nd July 2026 by 7.30 am - PRP 717 - vellore campus' | From: 'No Reply CDC Info' via VITIANS CDC Group, Vellore and Chennai Campus <vitianscdc2027@vitstudent.ac.in>\n- [Source 3] Subject: 'Pixel Compute Technologies Pvt Ltd online test is scheduled on 22nd July 2026 by 7.30 am - PRP 717 - vellore campus' | From: 'No Reply CDC Info' via VITIANS CDC Group, Vellore and Chennai Campus <vitianscdc2027@vitstudent.ac.in>",
+        "reference_answer": "The Pixel Compute Technologies online test was scheduled at the PRP 717 computer lab venue.",
+        "retrieved_sources_count": 5,
+        "retrieved_message_ids": [
+          "19f83fea04ddf03f",
+          "19d6c418282d9b7b",
+          "19f7dc38270447c6",
+          "19d6b5641f46ec96",
+          "19d6b1868de5708d"
+        ],
+        "is_abstention_expected": false,
+        "did_abstain": false,
+        "abstention_correct": true,
+        "correctness_score": 1.0,
+        "groundedness_score": 1.0,
+        "relevance_score": 1.0,
+        "citation_correctness": 1.0,
+        "key_evidence_coverage": 0.667,
+        "unsupported_claims": [],
+        "eval_method": "llm_judge",
+        "error": null
+      },
+      {
+        "query_id": "q49",
+        "query_text": "Who won the 1994 FIFA World Cup in the United States?",
+        "category": "irrelevant",
+        "generated_answer": "I couldn't find any relevant emails in your mailbox for this query. Please try rephrasing your question.",
+        "reference_answer": "I couldn't find any relevant emails in your mailbox for this query. Please try rephrasing your question.",
+        "retrieved_sources_count": 0,
+        "retrieved_message_ids": [],
+        "is_abstention_expected": true,
+        "did_abstain": true,
+        "abstention_correct": true,
+        "correctness_score": 1.0,
+        "groundedness_score": 1.0,
+        "relevance_score": 1.0,
+        "citation_correctness": 1.0,
+        "key_evidence_coverage": 1.0,
+        "unsupported_claims": [],
+        "eval_method": "llm_judge",
+        "error": null
+      }
+    ]
+  }
+}
