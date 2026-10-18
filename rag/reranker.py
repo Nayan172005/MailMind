@@ -1,8 +1,9 @@
 """
 MailMind RAG - metadata-aware candidate reranking.
 
-FAISS similarity remains the dominant signal. Metadata signals are conservative
-secondary adjustments used after deeper FAISS retrieval.
+FAISS semantic similarity serves as the primary anchor. High-precision secondary
+signals (entity coverage, explicit sender matching, venue tokens, date constraints,
+and controllable temporal intent) calibrate ordering and eliminate false positives.
 """
 
 from __future__ import annotations
@@ -78,8 +79,6 @@ def parse_email_date(value: Any) -> datetime | None:
 
 
 def _semantic_score(raw_score: float) -> float:
-    # FAISS IndexFlatIP over normalized embeddings behaves like cosine
-    # similarity. Clamp to keep weighted scores interpretable.
     return max(0.0, min(1.0, raw_score))
 
 
@@ -109,6 +108,7 @@ def _phrase_present(phrase: str, text: str) -> bool:
 
 
 def _entity_score(entities: list[str], candidate: dict) -> float:
+    """Calculate multi-entity coverage across subject, sender, and body."""
     if not entities:
         return 0.0
 
@@ -116,20 +116,92 @@ def _entity_score(entities: list[str], candidate: dict) -> float:
     sender = f"{candidate.get('sender_name', '')} {candidate.get('sender_email', '')}"
     body = f"{candidate.get('body_snippet', '')} {candidate.get('text', '')}"
 
-    scores = []
-    for entity in entities:
+    single_ents = [e for e in entities if " " not in e and len(e) > 1]
+    target_ents = single_ents if single_ents else entities
+
+    matched_val = 0.0
+    for entity in target_ents:
         if _phrase_present(entity, subject):
-            scores.append(1.0)
+            matched_val += 1.0
         elif _phrase_present(entity, sender):
-            scores.append(0.85)
+            matched_val += 0.85
         elif _phrase_present(entity, body):
-            scores.append(0.65)
+            matched_val += 0.60
         else:
             entity_terms = tokenize(entity)
             combined = f"{subject} {sender} {body}"
-            scores.append(_lexical_score(entity_terms, combined) * 0.5)
+            lex = _lexical_score(entity_terms, combined)
+            if lex > 0.4:
+                matched_val += 0.4
 
-    return sum(scores) / len(scores)
+    return min(1.0, matched_val / max(len(target_ents), 1))
+
+
+def _sender_score(senders: list[str], candidate: dict, fallback_terms: list[str]) -> float:
+    """Calculate sender match prioritizing explicit sender query constraints."""
+    sender_name = candidate.get("sender_name", "")
+    sender_email = candidate.get("sender_email", "")
+    sender_text = f"{sender_name} {sender_email}".lower()
+
+    if senders:
+        best_score = 0.0
+        for snd in senders:
+            snd_lower = snd.lower()
+            if snd_lower in sender_text:
+                best_score = max(best_score, 1.0)
+            else:
+                snd_tokens = tokenize(snd)
+                if snd_tokens:
+                    matched = sum(1 for t in snd_tokens if t in sender_text)
+                    token_score = matched / len(snd_tokens)
+                    if token_score > 0.5:
+                        best_score = max(best_score, 0.85 * token_score)
+        return best_score
+
+    return _lexical_score(fallback_terms, sender_text)
+
+
+def _venue_score(venues: list[str], candidate: dict) -> float:
+    """Score matches against room/building/venue identifiers."""
+    if not venues:
+        return 0.0
+
+    subject = candidate.get("subject", "")
+    body = f"{candidate.get('body_snippet', '')} {candidate.get('text', '')}"
+
+    for v in venues:
+        if _phrase_present(v, subject):
+            return 1.0
+        if _phrase_present(v, body):
+            return 0.80
+    return 0.0
+
+
+def _date_constraint_score(date_tokens: list[str], candidate: dict, semantic: float) -> float:
+    """
+    Reward matching explicit date/batch tokens, and penalize candidates lacking
+    the requested date token when semantic confidence is low.
+    """
+    if not date_tokens:
+        return 0.0
+
+    subject = candidate.get("subject", "")
+    body = f"{candidate.get('body_snippet', '')} {candidate.get('text', '')}"
+
+    has_match = False
+    for dt in date_tokens:
+        if _phrase_present(dt, subject):
+            has_match = True
+            return 0.15
+        elif _phrase_present(dt, body):
+            has_match = True
+            return 0.08
+
+    # Date token explicitly requested in query but completely missing in low-scoring candidate
+    if not has_match and semantic < 0.50:
+        return -0.15
+
+    return 0.0
 
 
 def _base_score(candidate: dict, analysis: QueryAnalysis) -> dict:
@@ -137,9 +209,10 @@ def _base_score(candidate: dict, analysis: QueryAnalysis) -> dict:
     subject = _lexical_score(analysis.subject_terms or analysis.terms, candidate.get("subject", ""))
     body_text = f"{candidate.get('body_snippet', '')} {candidate.get('text', '')}"
     body = _lexical_score(analysis.subject_terms or analysis.terms, body_text)
-    sender_text = f"{candidate.get('sender_name', '')} {candidate.get('sender_email', '')}"
-    sender = _lexical_score(analysis.terms, sender_text)
+    sender = _sender_score(analysis.senders, candidate, analysis.terms)
     entity = _entity_score(analysis.entities, candidate)
+    venue = _venue_score(analysis.venues, candidate)
+    date_constraint = _date_constraint_score(analysis.date_tokens, candidate, semantic)
 
     base = (
         semantic * settings.RERANK_SEMANTIC_WEIGHT
@@ -147,6 +220,8 @@ def _base_score(candidate: dict, analysis: QueryAnalysis) -> dict:
         + body * settings.RERANK_BODY_WEIGHT
         + sender * settings.RERANK_SENDER_WEIGHT
         + entity * settings.RERANK_ENTITY_WEIGHT
+        + (venue * 0.10 if analysis.venues else 0.0)
+        + date_constraint
     )
 
     return {
@@ -155,6 +230,8 @@ def _base_score(candidate: dict, analysis: QueryAnalysis) -> dict:
         "body_score": body,
         "sender_score": sender,
         "entity_score": entity,
+        "venue_score": venue,
+        "date_constraint": date_constraint,
         "temporal_score": 0.0,
         "base_score": base,
         "final_score": base,
@@ -162,7 +239,11 @@ def _base_score(candidate: dict, analysis: QueryAnalysis) -> dict:
     }
 
 
-def _temporal_scores(scored: list[dict], intent: TemporalIntent) -> dict[str, float]:
+def _temporal_scores(
+    scored: list[dict],
+    intent: TemporalIntent,
+    reference_time: datetime | None = None,
+) -> dict[str, float]:
     dated = [(item["message_id"], item.get("parsed_date")) for item in scored if item.get("parsed_date")]
     if not dated:
         return {}
@@ -171,7 +252,7 @@ def _temporal_scores(scored: list[dict], intent: TemporalIntent) -> dict[str, fl
     min_ts = min(timestamps)
     max_ts = max(timestamps)
     span = max(max_ts - min_ts, 1.0)
-    now = datetime.now(timezone.utc)
+    now = reference_time or datetime.now(timezone.utc)
 
     scores: dict[str, float] = {}
     for message_id, dt in dated:
@@ -213,8 +294,9 @@ def rerank_candidates(
     final_k: int,
     *,
     deduplicate: bool = True,
+    reference_time: datetime | None = None,
 ) -> list[dict]:
-    """Deduplicate and rerank raw FAISS candidates."""
+    """Deduplicate and rerank raw candidates using multi-signal scoring."""
     if not candidates:
         return []
 
@@ -238,7 +320,11 @@ def rerank_candidates(
         scored_emails = scored_chunks
 
     if analysis.temporal_intent:
-        temporal_by_message = _temporal_scores(scored_emails, analysis.temporal_intent)
+        temporal_by_message = _temporal_scores(
+            scored_emails,
+            analysis.temporal_intent,
+            reference_time=reference_time,
+        )
         for scored in scored_emails:
             temporal = temporal_by_message.get(scored.get("message_id", ""), 0.0)
             scored["temporal_score"] = temporal
@@ -272,10 +358,12 @@ def _log_debug_ranking(
     final_k: int,
 ) -> None:
     logger.debug(
-        "Query: %s | type=%s entities=%s temporal=%s",
+        "Query: %s | type=%s entities=%s senders=%s date_tokens=%s temporal=%s",
         truncate_text(query, 120),
         analysis.query_type.value,
         analysis.entities,
+        analysis.senders,
+        analysis.date_tokens,
         analysis.temporal_intent.value if analysis.temporal_intent else None,
     )
     logger.debug(

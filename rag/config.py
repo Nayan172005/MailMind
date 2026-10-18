@@ -35,16 +35,19 @@ class Settings(BaseSettings):
 
     # --- Retrieval ---
     TOP_K: int = 5
-    INITIAL_RETRIEVAL_K: int = 20
+    INITIAL_RETRIEVAL_K: int = 80
     FINAL_RETRIEVAL_K: int = 5
     SIMILARITY_THRESHOLD: float = 0.25
     MIN_RERANK_SCORE: float = 0.30
-    RERANK_SEMANTIC_WEIGHT: float = 0.65
+    ENABLE_HYBRID_RETRIEVAL: bool = True
+    HYBRID_DENSE_WEIGHT: float = 1.0
+    HYBRID_LEXICAL_WEIGHT: float = 0.8
+    RERANK_SEMANTIC_WEIGHT: float = 0.55
     RERANK_SUBJECT_WEIGHT: float = 0.15
     RERANK_BODY_WEIGHT: float = 0.05
-    RERANK_SENDER_WEIGHT: float = 0.05
-    RERANK_ENTITY_WEIGHT: float = 0.07
-    RERANK_TEMPORAL_WEIGHT: float = 0.08
+    RERANK_SENDER_WEIGHT: float = 0.12
+    RERANK_ENTITY_WEIGHT: float = 0.10
+    RERANK_TEMPORAL_WEIGHT: float = 0.10
 
     # --- Chunking ---
     CHUNK_SIZE: int = 400   # approximate words per chunk

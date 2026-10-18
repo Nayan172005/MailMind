@@ -32,10 +32,35 @@ def _get_client() -> genai.Client:
     return _client
 
 
+def validate_citations(answer: str, max_sources: int) -> str:
+    """
+    Validate and clean citation references in generated answers.
+    Ensures that any [Source X] references correspond to real sources in range 1..max_sources.
+    Removes non-existent citation tags to avoid hallucinated references.
+    """
+    import re
+
+    def _check_cite(match: re.Match) -> str:
+        idx_str = match.group(1)
+        try:
+            idx = int(idx_str)
+            if 1 <= idx <= max_sources:
+                return f"[Source {idx}]"
+            else:
+                return ""  # drop invalid citation
+        except ValueError:
+            return ""
+
+    cleaned = re.sub(r"\[Source\s*(\d+)\]", _check_cite, answer, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    return cleaned.strip()
+
+
 def generate_answer(
     query: str,
     context: str,
     model: str | None = None,
+    max_sources: int = 5,
 ) -> str:
     """
     Generate a grounded answer using Gemini.
@@ -44,6 +69,7 @@ def generate_answer(
         query: The user's question.
         context: The retrieved email context (formatted text).
         model: Override the default Gemini model.
+        max_sources: Number of sources provided in context for citation validation.
 
     Returns:
         Generated answer string.
@@ -69,7 +95,12 @@ def generate_answer(
         answer = response.text
         if not answer or not answer.strip():
             return "I received an empty response. Please try again."
-        return answer.strip()
+
+        cleaned_answer = answer.strip()
+        if max_sources > 0:
+            cleaned_answer = validate_citations(cleaned_answer, max_sources)
+
+        return cleaned_answer
 
     except Exception as e:
         logger.error(f"Gemini API error: {e}")
