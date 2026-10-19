@@ -133,11 +133,19 @@ def get_bm25_index(store: VectorStore) -> BM25Index:
     if not hasattr(store, "metadata") or not store.metadata:
         return BM25Index()
     store_id = id(store)
+    store_version = getattr(store, "version", 0)
     with _cache_lock:
         index = _bm25_cache.get(store_id)
-        if index is None or index._built_metadata_len != len(store.metadata):
+        if (
+            index is None
+            or index._built_metadata_len != len(store.metadata)
+            or getattr(index, "_store_version", -1) != store_version
+        ):
             index = BM25Index()
-            index.build(store.metadata)
+            with getattr(store, "_lock", threading.Lock()):
+                corpus_copy = list(store.metadata)
+            index.build(corpus_copy)
+            index._store_version = store_version
             _bm25_cache[store_id] = index
         return index
 
@@ -220,13 +228,15 @@ def search_hybrid(
             cand["lex_score"] = float(bm_score)
             cand["rrf_score"] += lex_weight / (k_rrf + rank)
         else:
-            cand = dict(store.metadata[vid])
-            # Reconstruct vector and compute true FAISS dot product
-            if store.index is not None:
-                vec = store.index.reconstruct(vid)
-                true_dense_score = float(np.dot(query_emb[0], vec))
-            else:
-                true_dense_score = 0.0
+            with getattr(store, "_lock", threading.Lock()):
+                if vid >= len(store.metadata):
+                    continue
+                cand = dict(store.metadata[vid])
+                if store.index is not None and vid < store.index.ntotal:
+                    vec = store.index.reconstruct(vid)
+                    true_dense_score = float(np.dot(query_emb[0], vec))
+                else:
+                    true_dense_score = 0.0
 
             cand["score"] = true_dense_score
             cand["dense_score"] = true_dense_score

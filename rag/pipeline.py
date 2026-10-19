@@ -135,8 +135,13 @@ class RAGPipeline:
 
         return self.get_index_status()
 
+    def reload_if_changed(self) -> bool:
+        """Check and reload vector store if index files on disk were updated."""
+        return self.store.reload_if_changed()
+
     def get_index_status(self) -> IndexStatusResponse:
         """Get current index status."""
+        self.reload_if_changed()
         return IndexStatusResponse(
             indexed=self.store.is_loaded,
             total_vectors=self.store.total_vectors,
@@ -154,6 +159,7 @@ class RAGPipeline:
 
         Returns ranked email results based on semantic similarity.
         """
+        self.reload_if_changed()
         if not self.is_ready:
             raise RuntimeError("Index not loaded. Call load_index() or build_index() first.")
 
@@ -176,6 +182,7 @@ class RAGPipeline:
         Retrieves relevant emails, then generates an answer using Gemini.
         Returns "not found" if no relevant emails are retrieved.
         """
+        self.reload_if_changed()
         if not self.is_ready:
             raise RuntimeError("Index not loaded. Call load_index() or build_index() first.")
 
@@ -211,6 +218,7 @@ class RAGPipeline:
         Mode A: Provide message_id to summarize a single email.
         Mode B: Provide query to summarize matching emails.
         """
+        self.reload_if_changed()
         if not self.is_ready:
             raise RuntimeError("Index not loaded. Call load_index() or build_index() first.")
 
@@ -239,6 +247,7 @@ class RAGPipeline:
         Maintains session history and contextualizes follow-up queries.
         Each turn performs fresh retrieval.
         """
+        self.reload_if_changed()
         if not self.is_ready:
             raise RuntimeError("Index not loaded. Call load_index() or build_index() first.")
 
@@ -251,6 +260,7 @@ class RAGPipeline:
 
     def get_email(self, message_id: str) -> EmailDetailResponse | None:
         """Retrieve full email details by message_id."""
+        self.reload_if_changed()
         # Check the loaded emails first
         if self._emails_lookup and message_id in self._emails_lookup:
             data = self._emails_lookup[message_id]
