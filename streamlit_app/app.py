@@ -84,6 +84,16 @@ def load_pipeline():
 
 pipeline, index_loaded = load_pipeline()
 
+# Automatically detect if index was created or updated on disk
+if not index_loaded:
+    try:
+        pipeline.load_index()
+        index_loaded = True
+    except FileNotFoundError:
+        index_loaded = False
+else:
+    pipeline.reload_if_changed()
+
 
 # ─── Session State ────────────────────────────────────────────────────
 
@@ -112,9 +122,18 @@ with st.sidebar:
     st.markdown("## Index Status")
     if index_loaded:
         status = pipeline.get_index_status()
-        st.success(f" Index loaded")
-        st.metric("Total Vectors", status.total_vectors)
-        st.metric("Total Emails", status.total_emails)
+        st.success(" Index loaded")
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            st.metric("Total Vectors", status.total_vectors)
+        with col_m2:
+            st.metric("Total Emails", status.total_emails)
+        if st.button("Check for New Emails", use_container_width=True):
+            if pipeline.reload_if_changed():
+                st.success("New emails detected! Index refreshed.")
+                st.rerun()
+            else:
+                st.info("Index is already up to date.")
     else:
         st.warning(" No index loaded")
         if st.button(" Build Index"):

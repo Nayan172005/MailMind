@@ -60,7 +60,8 @@ def _retrieve_ranked_candidates(
 ) -> list[dict]:
     if not query.strip():
         logger.warning("Empty query received")
-        return []
+    if hasattr(store, "reload_if_changed"):
+        store.reload_if_changed()
 
     if not store.is_loaded:
         raise RuntimeError("Vector store is not loaded.")

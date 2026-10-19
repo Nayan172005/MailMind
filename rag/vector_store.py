@@ -33,21 +33,32 @@ class VectorStore:
         self.index: Optional[faiss.Index] = None
         self.metadata: list[dict] = []  # list indexed by FAISS vector ID
         self._indexed_message_ids: set[str] = set()
-        self._lock = threading.Lock()  # protects index+metadata mutations
+        self._lock = threading.RLock()  # protects index+metadata mutations (reentrant)
+        self._version: int = 0
+        self._disk_signature: tuple[int, int, int, int] = (0, 0, 0, 0)
+        self._index_dir: Optional[Path] = None
+
+    @property
+    def version(self) -> int:
+        with self._lock:
+            return self._version
 
     @property
     def is_loaded(self) -> bool:
-        return self.index is not None
+        with self._lock:
+            return self.index is not None
 
     @property
     def total_vectors(self) -> int:
-        if self.index is None:
-            return 0
-        return self.index.ntotal
+        with self._lock:
+            if self.index is None:
+                return 0
+            return self.index.ntotal
 
     @property
     def total_emails(self) -> int:
-        return len(self._indexed_message_ids)
+        with self._lock:
+            return len(self._indexed_message_ids)
 
     def build_index(self, chunks: list[DocumentChunk]) -> None:
         """
@@ -68,31 +79,35 @@ class VectorStore:
 
         # Create FAISS index (Inner Product = cosine sim for normalized vectors)
         dimension = embeddings.shape[1]
-        self.index = faiss.IndexFlatIP(dimension)
-        self.index.add(embeddings.astype(np.float32))
+        with self._lock:
+            self.index = faiss.IndexFlatIP(dimension)
+            self.index.add(embeddings.astype(np.float32))
 
-        # Store metadata
-        self.metadata = []
-        self._indexed_message_ids = set()
+            # Store metadata
+            self.metadata = []
+            self._indexed_message_ids = set()
 
-        for i, chunk in enumerate(chunks):
-            self.metadata.append({
-                "vector_id": i,
-                "message_id": chunk.message_id,
-                "chunk_id": chunk.chunk_id,
-                "subject": chunk.subject,
-                "sender_name": chunk.sender_name,
-                "sender_email": chunk.sender_email,
-                "date": chunk.date,
-                "text": chunk.text,
-                "body_snippet": chunk.body_snippet,
-            })
-            self._indexed_message_ids.add(chunk.message_id)
+            for i, chunk in enumerate(chunks):
+                self.metadata.append({
+                    "vector_id": i,
+                    "message_id": chunk.message_id,
+                    "chunk_id": chunk.chunk_id,
+                    "subject": chunk.subject,
+                    "sender_name": chunk.sender_name,
+                    "sender_email": chunk.sender_email,
+                    "date": chunk.date,
+                    "text": chunk.text,
+                    "body_snippet": chunk.body_snippet,
+                })
+                self._indexed_message_ids.add(chunk.message_id)
 
-        logger.info(
-            f"Index built: {self.index.ntotal} vectors, "
-            f"{len(self._indexed_message_ids)} unique emails"
-        )
+            self._version += 1
+            self._disk_signature = (0, 0, 0, 0)
+
+            logger.info(
+                f"Index built: {self.index.ntotal} vectors, "
+                f"{len(self._indexed_message_ids)} unique emails (version {self._version})"
+            )
 
     def update_index(self, new_chunks: list[DocumentChunk]) -> int:
         """
@@ -136,7 +151,8 @@ class VectorStore:
                 })
                 self._indexed_message_ids.add(chunk.message_id)
 
-            logger.info(f"Index updated: {self.index.ntotal} total vectors")
+            self._version += 1
+            logger.info(f"Index updated: {self.index.ntotal} total vectors (version {self._version})")
             return len(novel_chunks)
 
     def search(
@@ -157,22 +173,23 @@ class VectorStore:
         if not self.is_loaded:
             raise RuntimeError("No index loaded.")
 
-        top_k = top_k or settings.TOP_K
-        top_k = min(top_k, self.index.ntotal)  # can't return more than we have
+        with self._lock:
+            top_k = top_k or settings.TOP_K
+            top_k = min(top_k, self.index.ntotal)  # can't return more than we have
 
-        scores, indices = self.index.search(
-            query_embedding.astype(np.float32), top_k
-        )
+            scores, indices = self.index.search(
+                query_embedding.astype(np.float32), top_k
+            )
 
-        results = []
-        for score, idx in zip(scores[0], indices[0]):
-            if idx < 0 or idx >= len(self.metadata):
-                continue
-            result = dict(self.metadata[idx])
-            result["score"] = float(score)
-            results.append(result)
+            results = []
+            for score, idx in zip(scores[0], indices[0]):
+                if idx < 0 or idx >= len(self.metadata):
+                    continue
+                result = dict(self.metadata[idx])
+                result["score"] = float(score)
+                results.append(result)
 
-        return results
+            return results
 
     def save(self, index_dir: str | Path | None = None) -> None:
         """Persist the FAISS index and metadata to disk."""
@@ -180,7 +197,8 @@ class VectorStore:
             raise RuntimeError("No index to save.")
 
         with self._lock:
-            index_dir = Path(index_dir) if index_dir else settings.index_abs_dir
+            index_dir = Path(index_dir) if index_dir else (self._index_dir or settings.index_abs_dir)
+            self._index_dir = index_dir
             index_dir.mkdir(parents=True, exist_ok=True)
 
             faiss_path = index_dir / "emails.faiss"
@@ -195,23 +213,42 @@ class VectorStore:
             with open(meta_tmp, "w", encoding="utf-8") as f:
                 json.dump(self.metadata, f, ensure_ascii=False)
 
-            # Atomic rename (best-effort on Windows)
             import os
-            if faiss_path.exists():
-                os.replace(str(faiss_tmp), str(faiss_path))
-            else:
-                faiss_tmp.rename(faiss_path)
+            def _atomic_replace(src: Path, dst: Path) -> None:
+                for attempt in range(5):
+                    try:
+                        if dst.exists():
+                            os.replace(str(src), str(dst))
+                        else:
+                            src.rename(dst)
+                        return
+                    except (PermissionError, OSError):
+                        if attempt == 4:
+                            raise
+                        import time
+                        time.sleep(0.02 * (attempt + 1))
 
-            if meta_path.exists():
-                os.replace(str(meta_tmp), str(meta_path))
-            else:
-                meta_tmp.rename(meta_path)
+            _atomic_replace(faiss_tmp, faiss_path)
+            _atomic_replace(meta_tmp, meta_path)
+
+            try:
+                f_stat = faiss_path.stat()
+                m_stat = meta_path.stat()
+                self._disk_signature = (
+                    f_stat.st_mtime_ns,
+                    f_stat.st_size,
+                    m_stat.st_mtime_ns,
+                    m_stat.st_size,
+                )
+            except OSError:
+                pass
 
             logger.info(f"Index saved to {index_dir}")
 
     def load(self, index_dir: str | Path | None = None) -> None:
         """Load a persisted FAISS index and metadata from disk."""
         index_dir = Path(index_dir) if index_dir else settings.index_abs_dir
+        self._index_dir = index_dir
 
         faiss_path = index_dir / "emails.faiss"
         meta_path = index_dir / "metadata.json"
@@ -221,18 +258,108 @@ class VectorStore:
         if not meta_path.exists():
             raise FileNotFoundError(f"Metadata not found at {meta_path}")
 
-        self.index = faiss.read_index(str(faiss_path))
+        new_index = faiss.read_index(str(faiss_path))
 
         with open(meta_path, "r", encoding="utf-8") as f:
-            self.metadata = json.load(f)
+            new_meta = json.load(f)
 
-        self._indexed_message_ids = {m["message_id"] for m in self.metadata}
-
-        logger.info(
-            f"Index loaded: {self.index.ntotal} vectors, "
-            f"{len(self._indexed_message_ids)} unique emails"
+        f_stat = faiss_path.stat()
+        m_stat = meta_path.stat()
+        current_sig = (
+            f_stat.st_mtime_ns,
+            f_stat.st_size,
+            m_stat.st_mtime_ns,
+            m_stat.st_size,
         )
+
+        with self._lock:
+            self.index = new_index
+            self.metadata = new_meta
+            self._indexed_message_ids = {m["message_id"] for m in self.metadata}
+            self._disk_signature = current_sig
+            self._version += 1
+
+            logger.info(
+                f"Index loaded: {self.index.ntotal} vectors, "
+                f"{len(self._indexed_message_ids)} unique emails (version {self._version})"
+            )
+
+    def reload_if_changed(self, index_dir: str | Path | None = None) -> bool:
+        """
+        Check if on-disk index or metadata has been modified since last load/save.
+        If modified, safely reload under lock.
+
+        Fast return (microsecond stat check) if unchanged.
+        Returns True if index was reloaded, False otherwise.
+        """
+        target_dir = Path(index_dir) if index_dir else self._index_dir
+        if target_dir is None:
+            return False
+
+        faiss_path = target_dir / "emails.faiss"
+        meta_path = target_dir / "metadata.json"
+
+        if not faiss_path.exists() or not meta_path.exists():
+            return False
+
+        try:
+            f_stat = faiss_path.stat()
+            m_stat = meta_path.stat()
+            current_sig = (
+                f_stat.st_mtime_ns,
+                f_stat.st_size,
+                m_stat.st_mtime_ns,
+                m_stat.st_size,
+            )
+        except OSError:
+            return False
+
+        if (self.index is not None) and current_sig == self._disk_signature:
+            return False
+
+        with self._lock:
+            # Re-check under lock in case another thread just reloaded
+            try:
+                f_stat = faiss_path.stat()
+                m_stat = meta_path.stat()
+                current_sig = (
+                    f_stat.st_mtime_ns,
+                    f_stat.st_size,
+                    m_stat.st_mtime_ns,
+                    m_stat.st_size,
+                )
+            except OSError:
+                return False
+
+            if (self.index is not None) and current_sig == self._disk_signature:
+                return False
+
+            try:
+                logger.info("Detected updated index files on disk. Reloading VectorStore...")
+                new_index = faiss.read_index(str(faiss_path))
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    new_meta = json.load(f)
+            except (OSError, json.JSONDecodeError, RuntimeError) as e:
+                logger.warning(
+                    f"Transient error reading updated index files: {e}. Keeping current in-memory index."
+                )
+                return False
+
+            self.index = new_index
+            self.metadata = new_meta
+            self._indexed_message_ids = {m["message_id"] for m in self.metadata}
+            self._disk_signature = current_sig
+            self._index_dir = target_dir
+            self._version += 1
+
+            logger.info(
+                f"Index reloaded successfully: {self.index.ntotal} vectors, "
+                f"{len(self._indexed_message_ids)} unique emails (version {self._version})"
+            )
+            return True
 
     def get_chunks_by_message_id(self, message_id: str) -> list[dict]:
         """Retrieve all chunks for a given message_id."""
-        return [m for m in self.metadata if m["message_id"] == message_id]
+        with self._lock:
+            return [m for m in self.metadata if m["message_id"] == message_id]
+
