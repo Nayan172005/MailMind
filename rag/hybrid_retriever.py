@@ -60,10 +60,11 @@ class BM25Index:
         for doc_idx, doc in enumerate(corpus):
             subj = doc.get("subject", "")
             sender = f"{doc.get('sender_name', '')} {doc.get('sender_email', '')}"
+            date_str = doc.get("date", "")
             text = doc.get("body_snippet", "") or doc.get("text", "")
 
-            # Weighted field representation: subject 3x, sender 2x, body 1x
-            tokens = re.findall(r"[a-z0-9]+", f"{subj} {subj} {subj} {sender} {sender} {text}".lower())
+            # Weighted field representation: subject 3x, sender 2x, date 1x, body 1x
+            tokens = re.findall(r"[a-z0-9]+", f"{subj} {subj} {subj} {sender} {sender} {date_str} {text}".lower())
             length = len(tokens)
             self.doc_len[doc_idx] = length
             total_len += length
@@ -86,7 +87,7 @@ class BM25Index:
         self._built_metadata_len = self.doc_count
         logger.info("Built in-memory BM25 index over %d documents", self.doc_count)
 
-    def search(self, query_terms: list[str], top_k: int = 80) -> list[tuple[int, float]]:
+    def search(self, query_terms: list[str], top_k: int = 100) -> list[tuple[int, float]]:
         """
         Search inverted index using BM25 scoring.
 
@@ -95,8 +96,14 @@ class BM25Index:
         if not query_terms or self.doc_count == 0:
             return []
 
-        scores: dict[int, float] = defaultdict(float)
+        expanded_terms = list(query_terms)
         for term in query_terms:
+            t = term.lower()
+            if len(t) > 3 and t.endswith("s"):
+                expanded_terms.append(t.rstrip("s"))
+
+        scores: dict[int, float] = defaultdict(float)
+        for term in expanded_terms:
             t = term.lower()
             if t not in self.inverted_index:
                 continue
@@ -139,7 +146,7 @@ def search_hybrid(
     query: str,
     analysis: QueryAnalysis,
     store: VectorStore,
-    initial_k: int = 80,
+    initial_k: int = 100,
     dense_weight: float = 1.0,
     lex_weight: float = 0.8,
     k_rrf: float = 60.0,
@@ -186,6 +193,10 @@ def search_hybrid(
         lex_terms = [t.lower() for t in analysis.terms if len(t) > 1]
     if not lex_terms:
         lex_terms = re.findall(r"[a-z0-9]+", query.lower())
+
+    # Stem plural terms ending in 's'
+    stems = [t.rstrip("s") for t in lex_terms if len(t) > 3 and t.endswith("s")]
+    lex_terms.extend(stems)
 
     # 3. Lexical BM25 search
     bm25 = get_bm25_index(store)

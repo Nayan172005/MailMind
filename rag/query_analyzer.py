@@ -127,16 +127,46 @@ def _detect_broad_search(query: str) -> bool:
     return any(p in padded for p in BROAD_PATTERNS)
 
 
+def _clean_sender_title(raw: str) -> str:
+    """Trim trailing lowercase topic words from title-cased/uppercase sender titles."""
+    words = raw.split()
+    if not words:
+        return ""
+    if words[0][0].isupper():
+        title_words = []
+        for w in words:
+            if w[0].isupper() or w.lower() in ("of", "and", "&", "for", "the"):
+                title_words.append(w)
+            else:
+                break
+        if title_words:
+            return " ".join(title_words)
+    return raw
+
+
 def _extract_senders(query: str) -> list[str]:
     """Extract explicit sender mentions or email addresses from query."""
     senders: list[str] = []
 
-    # Direct email address pattern
+    # 1. Direct email address pattern
     email_pattern = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
     for match in email_pattern.finditer(query):
         senders.append(match.group(0))
 
-    # Sender expressions like: "emails from Helpdesk CDC regarding...", "from Google", "sent by CDC"
+    # 2. Leading sender expressions: "Helpdesk CDC emails regarding...", "Dean Academics circulars..."
+    leading_sender_expr = re.compile(
+        r"\b([A-Za-z0-9@._\s\-]{2,50})\s+(?:emails?|messages?|circulars?|notices?)\b",
+        re.IGNORECASE,
+    )
+    for match in leading_sender_expr.finditer(query):
+        raw_sender = match.group(1).strip()
+        cleaned = re.sub(r"^(?:the|my|all|find|show|get|list)\s+", "", raw_sender, flags=re.IGNORECASE).strip()
+        cleaned = _clean_sender_title(cleaned)
+        tokens = tokenize(cleaned)
+        if tokens and not all(t in STOPWORDS or t in CONVERSATIONAL_VERBS for t in tokens):
+            senders.append(cleaned)
+
+    # 3. Trailing sender expressions: "emails from Helpdesk CDC regarding...", "from Google", "sent by CDC"
     sender_expr = re.compile(
         r"(?:emails?\s+from|from|sent\s+by)\s+([A-Za-z0-9@._\s\-]+?)"
         r"(?:\s+(?:regarding|about|for|on|with|mentioning|in\s+regard\s+to|batch)|\?|$|[.,;])",
@@ -144,8 +174,8 @@ def _extract_senders(query: str) -> list[str]:
     )
     for match in sender_expr.finditer(query):
         raw_sender = match.group(1).strip()
-        # Clean leading words like 'the', 'my'
         cleaned = re.sub(r"^(?:the|my)\s+", "", raw_sender, flags=re.IGNORECASE).strip()
+        cleaned = _clean_sender_title(cleaned)
         tokens = tokenize(cleaned)
         if tokens and not all(t in STOPWORDS or t in CONVERSATIONAL_VERBS for t in tokens):
             senders.append(cleaned)

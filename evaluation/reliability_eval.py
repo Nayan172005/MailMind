@@ -302,11 +302,13 @@ def test_pubsub_webhook_security() -> CheckResult:
 def profile_system_latencies(pipeline: RAGPipeline) -> Dict[str, float]:
     """
     Separately profiles:
-    - embedding latency
-    - FAISS search latency
-    - reranking latency
-    - total retrieval latency
-    - LLM answer generation latency
+    - query embedding latency
+    - FAISS dense search latency
+    - BM25 lexical search latency
+    - reranking & deduplication latency
+    - context construction latency
+    - total end-to-end retrieval latency
+    - LLM answer generation latency (kept strictly distinct)
     """
     query = "placement interviews schedule and venues"
 
@@ -315,29 +317,44 @@ def profile_system_latencies(pipeline: RAGPipeline) -> Dict[str, float]:
     emb = embed_query(query)
     embed_ms = (time.perf_counter() - t0) * 1000
 
-    # 2. FAISS search latency
+    # 2. FAISS dense search latency
     t0 = time.perf_counter()
-    raw_results = pipeline.store.search(emb, top_k=30)
+    raw_dense = pipeline.store.search(emb, top_k=settings.INITIAL_RETRIEVAL_K)
     faiss_ms = (time.perf_counter() - t0) * 1000
 
-    # 3. Reranking latency
+    # 3. BM25 lexical search latency
     analysis = analyze_query(query)
+    from rag.hybrid_retriever import get_bm25_index
+    t0 = time.perf_counter()
+    bm25 = get_bm25_index(pipeline.store)
+    _ = bm25.search([t.lower() for t in analysis.terms], top_k=settings.INITIAL_RETRIEVAL_K)
+    bm25_ms = (time.perf_counter() - t0) * 1000
+
+    # 4. Reranking latency
     t0 = time.perf_counter()
     reranked = rerank_candidates(
         query=query,
         analysis=analysis,
-        candidates=raw_results,
-        final_k=5,
+        candidates=raw_dense,
+        final_k=settings.FINAL_RETRIEVAL_K,
         deduplicate=True,
     )
     rerank_ms = (time.perf_counter() - t0) * 1000
 
-    # 4. Total retrieval latency
+    # 5. Context construction latency
+    from rag.prompt import build_context_text
     t0 = time.perf_counter()
-    results, context = retrieve_with_context(query, pipeline.store, top_k=5)
+    from rag.retriever import _to_search_result
+    results_for_ctx = [_to_search_result(c) for c in reranked]
+    _ = build_context_text(results_for_ctx)
+    context_ms = (time.perf_counter() - t0) * 1000
+
+    # 6. Total end-to-end retrieval latency
+    t0 = time.perf_counter()
+    results, context = retrieve_with_context(query, pipeline.store, top_k=settings.FINAL_RETRIEVAL_K)
     retrieval_ms = (time.perf_counter() - t0) * 1000
 
-    # 5. Generation latency (kept strictly distinct)
+    # 7. Generation latency (kept strictly distinct)
     gen_ms = 0.0
     if settings.GEMINI_API_KEY:
         try:
@@ -350,8 +367,10 @@ def profile_system_latencies(pipeline: RAGPipeline) -> Dict[str, float]:
 
     return {
         "query_embedding_ms": round(embed_ms, 2),
-        "faiss_search_ms": round(faiss_ms, 2),
-        "reranking_ms": round(rerank_ms, 2),
+        "faiss_dense_search_ms": round(faiss_ms, 2),
+        "bm25_lexical_search_ms": round(bm25_ms, 2),
+        "reranking_and_dedup_ms": round(rerank_ms, 2),
+        "context_construction_ms": round(context_ms, 2),
         "retrieval_total_ms": round(retrieval_ms, 2),
         "generation_ms": round(gen_ms, 2),
     }

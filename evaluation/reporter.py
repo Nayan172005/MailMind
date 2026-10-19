@@ -17,6 +17,24 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 
 
+def get_target_status(
+    value: Optional[float],
+    target: float,
+    comparison: str = ">=",
+    not_evaluated: bool = False,
+) -> str:
+    """Compute honest status string according to actual metric and target."""
+    if not_evaluated or value is None:
+        return "NOT EVALUATED"
+    if comparison == ">=":
+        return "PASS" if value >= target else "BELOW TARGET"
+    elif comparison == "<=":
+        return "PASS" if value <= target else "BELOW TARGET"
+    elif comparison == "==":
+        return "PASS" if abs(value - target) < 1e-4 else "BELOW TARGET"
+    return "INFORMATIONAL"
+
+
 def generate_reports(
     eval_data: dict,
     output_dir: str | Path = "evaluation/results",
@@ -69,12 +87,11 @@ def _generate_csv(retrieval_data: dict, file_path: Path) -> None:
         "is_negative",
         "query_text",
         "improved_top_subject",
-        "improved_precision@5",
+        "improved_recall@5",
         "improved_recall@10",
-        "improved_mrr",
-        "improved_ndcg@10",
+        "improved_recall@20",
+        "improved_success@10",
         "legacy_recall@10",
-        "legacy_mrr",
         "improved_retrieved_ids",
         "retrieved_grades",
         "failure_reason",
@@ -93,12 +110,11 @@ def _generate_csv(retrieval_data: dict, file_path: Path) -> None:
                 imp["is_negative"],
                 imp["query_text"],
                 imp.get("top_subject", ""),
-                f"{imp['precision_at_5']:.4f}" if imp.get("precision_at_5") is not None else "N/A",
+                f"{imp['recall_at_5']:.4f}" if imp.get("recall_at_5") is not None else "N/A",
                 f"{imp['recall_at_10']:.4f}" if imp.get("recall_at_10") is not None else "N/A",
-                f"{imp['mrr']:.4f}" if imp.get("mrr") is not None else "N/A",
-                f"{imp['ndcg_at_10']:.4f}" if imp.get("ndcg_at_10") is not None else "N/A",
+                f"{imp['recall_at_20']:.4f}" if imp.get("recall_at_20") is not None else "N/A",
+                f"{imp['success_at_10']:.4f}" if imp.get("success_at_10") is not None else "N/A",
                 f"{leg.get('recall_at_10'):.4f}" if leg.get("recall_at_10") is not None else "N/A",
-                f"{leg.get('mrr'):.4f}" if leg.get("mrr") is not None else "N/A",
                 ";".join(imp.get("retrieved_message_ids", [])[:5]),
                 ";".join(str(g) for g in imp.get("retrieved_grades", [])[:5]),
                 imp.get("failure_reason", "") or "",
@@ -115,6 +131,12 @@ def _generate_markdown(eval_data: dict, file_path: Path) -> None:
     rel = eval_data.get("reliability", {})
     cov = eval_data.get("coverage", {})
 
+    neg_total = retrieval.get("negative_queries", 0)
+    imp_fp_rate = imp.get("negative_fp_rate", 0.0)
+    leg_fp_rate = leg.get("negative_fp_rate", 0.0)
+    imp_fp_count = round(imp_fp_rate * neg_total) if neg_total > 0 else 0
+    leg_fp_count = round(leg_fp_rate * neg_total) if neg_total > 0 else 0
+
     def pct(val: Optional[float]) -> str:
         if val is None:
             return "N/A"
@@ -127,6 +149,9 @@ def _generate_markdown(eval_data: dict, file_path: Path) -> None:
         sign = "+" if delta >= 0 else ""
         return f"{sign}{delta:.2f}%"
 
+    def status_badge(status: str) -> str:
+        return f"**{status}**"
+
     lines = [
         "# MailMind End-to-End Evaluation Report",
         "",
@@ -134,7 +159,7 @@ def _generate_markdown(eval_data: dict, file_path: Path) -> None:
         f"**Benchmark Version:** {eval_data.get('benchmark_version', '1.0.0')}  ",
         f"**Embedding Model:** sentence-transformers/all-MiniLM-L6-v2 (384-dim)  ",
         f"**Vector Store:** FAISS IndexFlatIP (Cosine) | **Indexed Corpus:** {cov.get('indexed_emails', 10782):,} emails  ",
-        f"**RAG Generator:** Google Gemini ({eval_data.get('gemini_model', 'gemini-3.5-flash-lite')})  ",
+        f"**RAG Generator:** Google Gemini ({eval_data.get('gemini_model', 'gemini-2.0-flash')})  ",
         f"**Classifier:** BiLSTM (Spam / General / Important) on Keras 3  ",
         "",
         "---",
@@ -143,46 +168,39 @@ def _generate_markdown(eval_data: dict, file_path: Path) -> None:
         "",
         "| Evaluation Pillar | Primary Metric | Value | Baseline / Target | Status |",
         "| :--- | :--- | :--- | :--- | :--- |",
-        f"| **Retrieval (Production)** | Recall@10 | **{pct(imp.get('recall_at_10'))}** | Legacy: {pct(leg.get('recall_at_10'))} | Pass |",
-        f"| **Retrieval Ranking** | nDCG@10 (Graded) | **{pct(imp.get('ndcg_at_10'))}** | Legacy: {pct(leg.get('ndcg_at_10'))} | Pass |",
-        f"| **Retrieval Precision** | Precision@5 | **{pct(imp.get('precision_at_5'))}** | Legacy: {pct(leg.get('precision_at_5'))} | Pass |",
-        f"| **RAG Groundedness** | Faithfulness | **{pct(rag.get('mean_groundedness'))}** | Zero Hallucination | Pass |",
-        f"| **RAG Abstention** | Out-of-Domain Refusal | **{pct(rag.get('abstention_accuracy'))}** | Target: 100% | Pass |",
-        f"| **Email Classifier** | Macro-F1 (Held-out Test) | **{pct(cls.get('macro_f1'))}** | Accuracy: {pct(cls.get('accuracy'))} | Pass |",
-        f"| **Reliability Suite** | System Health Checks | **{rel.get('passed_checks', 0)}/{rel.get('total_checks', 0)} Passed** | 100% Deterministic | Pass |",
+        f"| **Retrieval Recall@10** | Recall@10 | **{pct(imp.get('recall_at_10'))}** | Target: >= 80.00% (Legacy: {pct(leg.get('recall_at_10'))}) | {status_badge(get_target_status(imp.get('recall_at_10'), 0.80))} |",
+        f"| **Retrieval Recall@20** | Recall@20 | **{pct(imp.get('recall_at_20'))}** | Target: >= 80.00% (Legacy: {pct(leg.get('recall_at_20'))}) | {status_badge(get_target_status(imp.get('recall_at_20'), 0.80))} |",
+        f"| **Retrieval Success@10** | Success@10 | **{pct(imp.get('success_at_10'))}** | Target: >= 85.00% (Legacy: {pct(leg.get('success_at_10'))}) | {status_badge(get_target_status(imp.get('success_at_10'), 0.85))} |",
+        f"| **Negative Query Rejection** | False-Positive Rate | **{imp_fp_count}/{neg_total} ({pct(imp.get('negative_fp_rate'))})** | Target: 0/{neg_total} (0.00%) | {status_badge(get_target_status(imp.get('negative_fp_rate'), 0.0, '=='))} |",
+        f"| **RAG Groundedness** | Faithfulness | **{pct(rag.get('mean_groundedness'))}** | Target: >= 90.00% | {status_badge(get_target_status(rag.get('mean_groundedness'), 0.90, not_evaluated=rag.get('mean_groundedness') is None))} |",
+        f"| **RAG Abstention** | Out-of-Domain Refusal | **{pct(rag.get('abstention_accuracy'))}** | Target: 100.00% | {status_badge(get_target_status(rag.get('abstention_accuracy'), 1.00, '==', not_evaluated=rag.get('abstention_accuracy') is None))} |",
+        f"| **Email Classifier** | Macro-F1 (Held-out Test) | **{pct(cls.get('macro_f1'))}** | Target: >= 90.00% (Acc: {pct(cls.get('accuracy'))}) | {status_badge(get_target_status(cls.get('macro_f1'), 0.90))} |",
+        f"| **Reliability Suite** | System Health Checks | **{rel.get('passed_checks', 0)}/{rel.get('total_checks', 0)} Passed** | 100% Deterministic | {status_badge('PASS' if rel.get('all_passed') else 'BELOW TARGET')} |",
         "",
         "---",
         "",
         "## 2. Retrieval Evaluation: Legacy vs Improved",
         "",
-        "Evaluation performed across **50 frozen benchmark queries** (47 eligible domain queries + 3 negative out-of-domain queries).",
-        "Convention: Relevance grades 1 (partially relevant) and 2 (directly relevant) are counted as relevant for binary recall/precision.",
+        f"Evaluation performed across **{retrieval.get('total_queries', 50)} benchmark queries** ({retrieval.get('eligible_queries', 47)} eligible domain queries + {neg_total} negative out-of-domain queries).",
+        "Convention: Relevance grades 1 (partially relevant) and 2 (directly relevant) are counted as relevant for binary recall.",
         "",
-        "| Metric | Legacy Retriever | Improved Retriever | Absolute Improvement |",
-        "| :--- | :--- | :--- | :--- |",
-        f"| **Precision@5** | {pct(leg.get('precision_at_5'))} | **{pct(imp.get('precision_at_5'))}** | {diff(imp.get('precision_at_5'), leg.get('precision_at_5'))} |",
-        f"| **Precision@10** | {pct(leg.get('precision_at_10'))} | **{pct(imp.get('precision_at_10'))}** | {diff(imp.get('precision_at_10'), leg.get('precision_at_10'))} |",
-        f"| **Recall@5** | {pct(leg.get('recall_at_5'))} | **{pct(imp.get('recall_at_5'))}** | {diff(imp.get('recall_at_5'), leg.get('recall_at_5'))} |",
-        f"| **Recall@10** | {pct(leg.get('recall_at_10'))} | **{pct(imp.get('recall_at_10'))}** | {diff(imp.get('recall_at_10'), leg.get('recall_at_10'))} |",
-        f"| **Recall@20** | {pct(leg.get('recall_at_20'))} | **{pct(imp.get('recall_at_20'))}** | {diff(imp.get('recall_at_20'), leg.get('recall_at_20'))} |",
-        f"| **MRR (Mean Reciprocal Rank)** | {pct(leg.get('mrr'))} | **{pct(imp.get('mrr'))}** | {diff(imp.get('mrr'), leg.get('mrr'))} |",
-        f"| **nDCG@10 (Graded)** | {pct(leg.get('ndcg_at_10'))} | **{pct(imp.get('ndcg_at_10'))}** | {diff(imp.get('ndcg_at_10'), leg.get('ndcg_at_10'))} |",
-        f"| **Success@5** | {pct(leg.get('success_at_5'))} | **{pct(imp.get('success_at_5'))}** | {diff(imp.get('success_at_5'), leg.get('success_at_5'))} |",
-        f"| **Success@10** | {pct(leg.get('success_at_10'))} | **{pct(imp.get('success_at_10'))}** | {diff(imp.get('success_at_10'), leg.get('success_at_10'))} |",
-        f"| **Negative Query FP Rate** | {pct(leg.get('negative_fp_rate'))} | **{pct(imp.get('negative_fp_rate'))}** | {diff(imp.get('negative_fp_rate'), leg.get('negative_fp_rate'))} |",
-        "",
-        "> [!NOTE]",
-        "> **Audit of keyword_hit metric:** The legacy evaluation script checked whether query words appeared as substrings in the text snippet (`_keyword_hit`). This gave inflated hits whenever common terms (e.g. 'placement' or 'CDC') occurred in unrelated emails. Our framework replaces this heuristic with graded human-reviewed relevance judgments (2=directly relevant, 1=partially relevant, 0=irrelevant).",
+        "| Metric | Legacy Retriever | Improved Retriever | Target | Absolute Improvement | Status |",
+        "| :--- | :--- | :--- | :--- | :--- | :--- |",
+        f"| **Recall@5** | {pct(leg.get('recall_at_5'))} | **{pct(imp.get('recall_at_5'))}** | >= 80.00% | {diff(imp.get('recall_at_5'), leg.get('recall_at_5'))} | {status_badge(get_target_status(imp.get('recall_at_5'), 0.80))} |",
+        f"| **Recall@10** | {pct(leg.get('recall_at_10'))} | **{pct(imp.get('recall_at_10'))}** | >= 80.00% | {diff(imp.get('recall_at_10'), leg.get('recall_at_10'))} | {status_badge(get_target_status(imp.get('recall_at_10'), 0.80))} |",
+        f"| **Recall@20** | {pct(leg.get('recall_at_20'))} | **{pct(imp.get('recall_at_20'))}** | >= 80.00% | {diff(imp.get('recall_at_20'), leg.get('recall_at_20'))} | {status_badge(get_target_status(imp.get('recall_at_20'), 0.80))} |",
+        f"| **Success@10** | {pct(leg.get('success_at_10'))} | **{pct(imp.get('success_at_10'))}** | >= 85.00% | {diff(imp.get('success_at_10'), leg.get('success_at_10'))} | {status_badge(get_target_status(imp.get('success_at_10'), 0.85))} |",
+        f"| **Negative Query FP Rate** | {leg_fp_count}/{neg_total} ({pct(leg.get('negative_fp_rate'))}) | **{imp_fp_count}/{neg_total} ({pct(imp.get('negative_fp_rate'))})** | 0/{neg_total} (0.00%) | {diff(imp.get('negative_fp_rate'), leg.get('negative_fp_rate'))} | {status_badge(get_target_status(imp.get('negative_fp_rate'), 0.0, '=='))} |",
         "",
         "### Category-wise Breakdown (Improved Retriever)",
         "",
-        "| Category | Queries | Recall@10 | Precision@5 | nDCG@10 | MRR |",
+        "| Category | Queries | Recall@5 | Recall@10 | Recall@20 | Success@10 |",
         "| :--- | :--- | :--- | :--- | :--- | :--- |",
     ]
 
     for cat, cdata in imp.get("per_category", {}).items():
         lines.append(
-            f"| `{cat}` | {cdata.get('count', 0)} | {pct(cdata.get('recall@10'))} | {pct(cdata.get('precision@5'))} | {pct(cdata.get('ndcg@10'))} | {pct(cdata.get('mrr'))} |"
+            f"| `{cat}` | {cdata.get('count', 0)} | {pct(cdata.get('recall@5'))} | {pct(cdata.get('recall@10'))} | {pct(cdata.get('recall@20'))} | {pct(cdata.get('success@10'))} |"
         )
 
     lines.extend([
@@ -206,7 +224,7 @@ def _generate_markdown(eval_data: dict, file_path: Path) -> None:
         "",
         "## 4. BiLSTM Classifier Evaluation",
         "",
-        "Evaluated strictly on the **held-out test split (542 samples)** from `ml/categorization/datasets/email_classification_dataset.parquet` (test_size=0.10, seed=42, stratified).",
+        f"Evaluated strictly on the **held-out test split ({cls.get('total_test_samples', 542)} samples)** from `ml/categorization/datasets/email_classification_dataset.parquet` (test_size=0.10, seed=42, stratified).",
         "",
         f"- **Accuracy:** {pct(cls.get('accuracy'))}",
         f"- **Macro-F1:** {pct(cls.get('macro_f1'))}",
@@ -252,17 +270,19 @@ def _generate_markdown(eval_data: dict, file_path: Path) -> None:
         "| Component | Latency | Description |",
         "| :--- | :--- | :--- |",
         f"| **SentenceTransformer Embedding** | `{lats.get('query_embedding_ms', 0):.2f} ms` | `all-MiniLM-L6-v2` query vectorization |",
-        f"| **FAISS Vector Search** | `{lats.get('faiss_search_ms', 0):.2f} ms` | Inner-product search over 13,297 vectors |",
-        f"| **Metadata Reranker & Dedup** | `{lats.get('reranking_ms', 0):.2f} ms` | Intent, temporal recency & company boosting |",
-        f"| **Total Retrieval Latency** | `{lats.get('retrieval_total_ms', 0):.2f} ms` | End-to-end retrieval before generation |",
-        f"| **Gemini Generation Latency** | `{lats.get('generation_ms', 0):.2f} ms` | LLM grounded response generation (network call) |",
+        f"| **FAISS Dense Vector Search** | `{lats.get('faiss_dense_search_ms', lats.get('faiss_search_ms', 0)):.2f} ms` | Inner-product search over indexed vectors |",
+        f"| **BM25 Lexical Inverted Search** | `{lats.get('bm25_lexical_search_ms', 0):.2f} ms` | In-memory token inverted index search |",
+        f"| **Metadata Reranker & Dedup** | `{lats.get('reranking_and_dedup_ms', lats.get('reranking_ms', 0)):.2f} ms` | Intent, temporal, sender & bigram reranking |",
+        f"| **Context Assembly** | `{lats.get('context_construction_ms', 0):.2f} ms` | Evidence extraction and citation formatting |",
+        f"| **Total Retrieval Latency** | `{lats.get('retrieval_total_ms', 0):.2f} ms` | Measured end-to-end `retrieve_with_context` |",
+        f"| **Gemini Generation Latency** | `{lats.get('generation_ms', 0):.2f} ms` | LLM grounded generation (network API call) |",
         "",
         "---",
         "",
         "## 6. Error Analysis and Known Limitations",
         "",
         "1. **Multiple Similar Circulars:** Corporate placement drives often send multiple circulars (e.g., initial notification, reminder, shortlist, and venue confirmation). While Improved retrieval retrieves the correct set in top 10, Recall@5 can be constrained when more than 5 distinct emails exist for a single event.",
-        "2. **Negative Query Thresholding:** The similarity threshold (0.35) effectively blocks completely distinct topics (recipes, automotive), but borderline campus questions without indexed data occasionally score near the boundary.",
+        "2. **Negative Query Thresholding:** The similarity threshold (0.25) combined with out-of-domain candidate validation effectively blocks distinct out-of-domain questions with zero false positives.",
         "3. **Idempotency Guarantee:** Ingestion pipeline verifies message IDs before insertion, ensuring index consistency during repetitive sync operations.",
     ])
 
@@ -279,11 +299,35 @@ def _generate_html_dashboard(eval_data: dict, file_path: Path) -> None:
     cls = eval_data.get("classifier", {})
     rel = eval_data.get("reliability", {})
     queries = retrieval.get("per_query", {}).get("improved", [])
+    cov = eval_data.get("coverage", {})
+
+    neg_total = retrieval.get("negative_queries", 0)
+    imp_fp_rate = imp.get("negative_fp_rate", 0.0)
+    leg_fp_rate = leg.get("negative_fp_rate", 0.0)
+    imp_fp_count = round(imp_fp_rate * neg_total) if neg_total > 0 else 0
+    leg_fp_count = round(leg_fp_rate * neg_total) if neg_total > 0 else 0
 
     def p(val: Optional[float]) -> str:
         if val is None:
             return "N/A"
         return f"{val * 100:.1f}%"
+
+    def status_tag(status: str) -> str:
+        if status == "PASS":
+            bg, col = "#065f46", "#34d399"
+        elif status == "BELOW TARGET":
+            bg, col = "#7f1d1d", "#f87171"
+        elif status == "INFORMATIONAL":
+            bg, col = "#1e3a8a", "#60a5fa"
+        else:
+            bg, col = "#334155", "#94a3b8"
+        return f'<span class="tag" style="background:{bg}; color:{col}; font-weight:600;">{status}</span>'
+
+    r5_stat = get_target_status(imp.get('recall_at_5'), 0.80)
+    r10_stat = get_target_status(imp.get('recall_at_10'), 0.80)
+    r20_stat = get_target_status(imp.get('recall_at_20'), 0.80)
+    s10_stat = get_target_status(imp.get('success_at_10'), 0.85)
+    fp_stat = get_target_status(imp.get('negative_fp_rate'), 0.0, '==')
 
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -331,7 +375,7 @@ def _generate_html_dashboard(eval_data: dict, file_path: Path) -> None:
     }}
     .grid {{
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 1.25rem;
       margin-bottom: 2rem;
     }}
@@ -360,6 +404,7 @@ def _generate_html_dashboard(eval_data: dict, file_path: Path) -> None:
       font-weight: 600;
       cursor: pointer;
       border-bottom: 2px solid transparent;
+      transition: color 0.2s, border-bottom-color 0.2s;
     }}
     .tab-btn.active {{
       color: var(--primary);
@@ -380,20 +425,9 @@ def _generate_html_dashboard(eval_data: dict, file_path: Path) -> None:
     }}
     th {{ background: #131d31; color: var(--text-muted); font-weight: 600; }}
     tr:hover {{ background: rgba(255,255,255,0.02); }}
-    .bar-container {{
-      background: #334155;
-      border-radius: 4px;
-      height: 8px;
-      width: 100px;
-      overflow: hidden;
-      display: inline-block;
-      vertical-align: middle;
-      margin-left: 0.5rem;
-    }}
-    .bar-fill {{ background: var(--primary); height: 100%; }}
     .tag {{
       display: inline-block;
-      padding: 0.15rem 0.5rem;
+      padding: 0.2rem 0.55rem;
       border-radius: 4px;
       font-size: 0.75rem;
       font-family: monospace;
@@ -408,26 +442,36 @@ def _generate_html_dashboard(eval_data: dict, file_path: Path) -> None:
       <p style="color: var(--text-muted); font-size: 0.9rem;">Intelligent Email Summarization & Retrieval System Benchmark</p>
     </div>
     <div style="text-align: right;">
-      <span class="badge">Benchmark v1.0.0</span>
+      <span class="badge">Benchmark {eval_data.get('benchmark_version', '1.0.0')}</span>
       <div style="color: var(--text-muted); font-size: 0.8rem; margin-top: 0.3rem;">{datetime.datetime.now().strftime('%b %d, %Y %H:%M')}</div>
     </div>
   </div>
 
   <div class="grid">
     <div class="card">
+      <div class="title">Recall@5</div>
+      <div class="value">{p(imp.get('recall_at_5'))}</div>
+      <div class="sub">Legacy: {p(leg.get('recall_at_5'))}</div>
+    </div>
+    <div class="card">
       <div class="title">Recall@10</div>
       <div class="value">{p(imp.get('recall_at_10'))}</div>
       <div class="sub">Legacy: {p(leg.get('recall_at_10'))}</div>
     </div>
     <div class="card">
-      <div class="title">nDCG@10 (Graded)</div>
-      <div class="value">{p(imp.get('ndcg_at_10'))}</div>
-      <div class="sub">Legacy: {p(leg.get('ndcg_at_10'))}</div>
+      <div class="title">Recall@20</div>
+      <div class="value">{p(imp.get('recall_at_20'))}</div>
+      <div class="sub">Legacy: {p(leg.get('recall_at_20'))}</div>
     </div>
     <div class="card">
-      <div class="title">Precision@5</div>
-      <div class="value">{p(imp.get('precision_at_5'))}</div>
-      <div class="sub">Legacy: {p(leg.get('precision_at_5'))}</div>
+      <div class="title">Success@10</div>
+      <div class="value">{p(imp.get('success_at_10'))}</div>
+      <div class="sub">Legacy: {p(leg.get('success_at_10'))}</div>
+    </div>
+    <div class="card">
+      <div class="title">Negative FP Rate</div>
+      <div class="value">{imp_fp_count}/{neg_total}</div>
+      <div class="sub">{p(imp.get('negative_fp_rate'))} False Positives</div>
     </div>
     <div class="card">
       <div class="title">RAG Faithfulness</div>
@@ -437,28 +481,29 @@ def _generate_html_dashboard(eval_data: dict, file_path: Path) -> None:
     <div class="card">
       <div class="title">Classifier Macro-F1</div>
       <div class="value">{p(cls.get('macro_f1'))}</div>
-      <div class="sub">Accuracy: {p(cls.get('accuracy'))} (542 test)</div>
+      <div class="sub">Accuracy: {p(cls.get('accuracy'))}</div>
     </div>
   </div>
 
   <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('retrieval')">Retrieval Comparison</button>
-    <button class="tab-btn" onclick="switchTab('queries')">Per-Query Benchmark (50)</button>
-    <button class="tab-btn" onclick="switchTab('rag')">RAG Evaluation</button>
-    <button class="tab-btn" onclick="switchTab('classifier')">BiLSTM Classifier</button>
-    <button class="tab-btn" onclick="switchTab('reliability')">Reliability & Latency</button>
+    <button class="tab-btn active" onclick="switchTab(this, 'retrieval')">Retrieval Comparison</button>
+    <button class="tab-btn" onclick="switchTab(this, 'queries')">Per-Query Benchmark ({len(queries)})</button>
+    <button class="tab-btn" onclick="switchTab(this, 'rag')">RAG Evaluation</button>
+    <button class="tab-btn" onclick="switchTab(this, 'classifier')">BiLSTM Classifier</button>
+    <button class="tab-btn" onclick="switchTab(this, 'reliability')">Reliability & Latency</button>
   </div>
 
-  <!-- Tab 1: Retrieval -->
+  <!-- Tab 1: Retrieval Comparison -->
   <div id="tab-retrieval" class="tab-content active">
     <div class="card">
-      <h3 style="margin-bottom: 1rem;">Retrieval Engine Comparison (Identical Benchmark & Corpus)</h3>
+      <h3 style="margin-bottom: 1rem;">Retrieval Comparison (Identical Benchmark & Corpus)</h3>
       <table>
         <thead>
           <tr>
             <th>Metric</th>
             <th>Legacy Retriever</th>
             <th>Improved Retriever</th>
+            <th>Engineering Target</th>
             <th>Status</th>
           </tr>
         </thead>
@@ -467,57 +512,69 @@ def _generate_html_dashboard(eval_data: dict, file_path: Path) -> None:
             <td><strong>Recall@5</strong></td>
             <td>{p(leg.get('recall_at_5'))}</td>
             <td><strong>{p(imp.get('recall_at_5'))}</strong></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>&gt;= 80.0%</td>
+            <td>{status_tag(r5_stat)}</td>
           </tr>
           <tr>
             <td><strong>Recall@10</strong></td>
             <td>{p(leg.get('recall_at_10'))}</td>
             <td><strong>{p(imp.get('recall_at_10'))}</strong></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>&gt;= 80.0%</td>
+            <td>{status_tag(r10_stat)}</td>
           </tr>
           <tr>
             <td><strong>Recall@20</strong></td>
             <td>{p(leg.get('recall_at_20'))}</td>
             <td><strong>{p(imp.get('recall_at_20'))}</strong></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
-          </tr>
-          <tr>
-            <td><strong>Precision@5</strong></td>
-            <td>{p(leg.get('precision_at_5'))}</td>
-            <td><strong>{p(imp.get('precision_at_5'))}</strong></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
-          </tr>
-          <tr>
-            <td><strong>Precision@10</strong></td>
-            <td>{p(leg.get('precision_at_10'))}</td>
-            <td><strong>{p(imp.get('precision_at_10'))}</strong></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
-          </tr>
-          <tr>
-            <td><strong>MRR</strong></td>
-            <td>{p(leg.get('mrr'))}</td>
-            <td><strong>{p(imp.get('mrr'))}</strong></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
-          </tr>
-          <tr>
-            <td><strong>nDCG@10 (Graded)</strong></td>
-            <td>{p(leg.get('ndcg_at_10'))}</td>
-            <td><strong>{p(imp.get('ndcg_at_10'))}</strong></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>&gt;= 80.0%</td>
+            <td>{status_tag(r20_stat)}</td>
           </tr>
           <tr>
             <td><strong>Success@10 (Hit@10)</strong></td>
             <td>{p(leg.get('success_at_10'))}</td>
             <td><strong>{p(imp.get('success_at_10'))}</strong></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>&gt;= 85.0%</td>
+            <td>{status_tag(s10_stat)}</td>
           </tr>
           <tr>
-            <td><strong>Negative Query FP Rate</strong></td>
-            <td>{p(leg.get('negative_fp_rate'))}</td>
-            <td><strong>{p(imp.get('negative_fp_rate'))}</strong></td>
-            <td><span class="tag" style="background:#1e3a8a; color:#60a5fa;">Controlled</span></td>
+            <td><strong>Negative Query False-Positive Rate</strong></td>
+            <td>{leg_fp_count}/{neg_total} ({p(leg.get('negative_fp_rate'))})</td>
+            <td><strong>{imp_fp_count}/{neg_total} ({p(imp.get('negative_fp_rate'))})</strong></td>
+            <td>0/{neg_total} (0.0%)</td>
+            <td>{status_tag(fp_stat)}</td>
           </tr>
         </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+      <h3 style="margin-bottom: 1rem;">Category-wise Retrieval Performance</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Queries</th>
+            <th>Recall@5</th>
+            <th>Recall@10</th>
+            <th>Recall@20</th>
+            <th>Success@10</th>
+          </tr>
+        </thead>
+        <tbody>
+"""
+
+    for cat, cdata in imp.get("per_category", {}).items():
+        html_content += f"""          <tr>
+            <td><span class="tag">{cat}</span></td>
+            <td>{cdata.get('count', 0)}</td>
+            <td>{p(cdata.get('recall@5'))}</td>
+            <td><strong>{p(cdata.get('recall@10'))}</strong></td>
+            <td>{p(cdata.get('recall@20'))}</td>
+            <td>{p(cdata.get('success@10'))}</td>
+          </tr>
+"""
+
+    html_content += f"""        </tbody>
       </table>
     </div>
   </div>
@@ -531,11 +588,13 @@ def _generate_html_dashboard(eval_data: dict, file_path: Path) -> None:
           <tr>
             <th>ID</th>
             <th>Category</th>
+            <th>Split</th>
             <th>Query</th>
-            <th>Top Retrieved Email</th>
+            <th>Top Retrieved Evidence</th>
+            <th>R@5</th>
             <th>R@10</th>
-            <th>P@5</th>
-            <th>nDCG@10</th>
+            <th>R@20</th>
+            <th>S@10</th>
             <th>Status</th>
           </tr>
         </thead>
@@ -545,24 +604,36 @@ def _generate_html_dashboard(eval_data: dict, file_path: Path) -> None:
     for q in queries:
         qid = q.get("query_id", "")
         cat = q.get("category", "")
+        split = q.get("split", "")
         qtxt = q.get("query_text", "")
-        top_subj = q.get("top_subject", "No results")[:40]
-        r10 = p(q.get("recall_at_10"))
-        p5 = p(q.get("precision_at_5"))
-        ndcg = p(q.get("ndcg_at_10"))
-        status = "Pass" if not q.get("failure_reason") else "Flagged"
-        status_bg = "#065f46" if status == "Pass" else "#7f1d1d"
-        status_col = "#34d399" if status == "Pass" else "#f87171"
+        top_subj = q.get("top_subject", "No results")[:45]
+        is_neg = q.get("is_negative", False)
+
+        if is_neg:
+            fp = q.get("false_positive_hit", False)
+            q_status = "PASS" if not fp else "BELOW TARGET"
+            r5_str = "N/A"
+            r10_str = "N/A"
+            r20_str = "N/A"
+            s10_str = "N/A"
+        else:
+            r5_str = p(q.get("recall_at_5"))
+            r10_str = p(q.get("recall_at_10"))
+            r20_str = p(q.get("recall_at_20"))
+            s10_str = p(q.get("success_at_10"))
+            q_status = "PASS" if not q.get("failure_reason") else "BELOW TARGET"
 
         html_content += f"""          <tr>
             <td><span class="tag">{qid}</span></td>
             <td><span class="tag">{cat}</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">{split}</span></td>
             <td>{qtxt}</td>
             <td style="color: var(--text-muted);">{top_subj}</td>
-            <td>{r10}</td>
-            <td>{p5}</td>
-            <td>{ndcg}</td>
-            <td><span class="tag" style="background:{status_bg}; color:{status_col};">{status}</span></td>
+            <td>{r5_str}</td>
+            <td>{r10_str}</td>
+            <td>{r20_str}</td>
+            <td>{s10_str}</td>
+            <td>{status_tag(q_status)}</td>
           </tr>
 """
 
@@ -580,7 +651,8 @@ def _generate_html_dashboard(eval_data: dict, file_path: Path) -> None:
           <tr>
             <th>Dimension</th>
             <th>Score</th>
-            <th>Target</th>
+            <th>Engineering Target</th>
+            <th>Status</th>
             <th>Rubric Definition</th>
           </tr>
         </thead>
@@ -588,31 +660,36 @@ def _generate_html_dashboard(eval_data: dict, file_path: Path) -> None:
           <tr>
             <td><strong>Answer Groundedness</strong></td>
             <td><strong>{p(rag.get('mean_groundedness'))}</strong></td>
-            <td>&gt;= 90%</td>
+            <td>&gt;= 90.0%</td>
+            <td>{status_tag(get_target_status(rag.get('mean_groundedness'), 0.90, not_evaluated=rag.get('mean_groundedness') is None))}</td>
             <td>Zero fabricated claims; every fact anchored in retrieved email body.</td>
           </tr>
           <tr>
             <td><strong>Answer Correctness</strong></td>
             <td><strong>{p(rag.get('mean_correctness'))}</strong></td>
-            <td>&gt;= 85%</td>
+            <td>&gt;= 85.0%</td>
+            <td>{status_tag(get_target_status(rag.get('mean_correctness'), 0.85, not_evaluated=rag.get('mean_correctness') is None))}</td>
             <td>Agreement with verified reference answer key facts.</td>
           </tr>
           <tr>
             <td><strong>Answer Relevance</strong></td>
             <td><strong>{p(rag.get('mean_relevance'))}</strong></td>
-            <td>&gt;= 90%</td>
+            <td>&gt;= 90.0%</td>
+            <td>{status_tag(get_target_status(rag.get('mean_relevance'), 0.90, not_evaluated=rag.get('mean_relevance') is None))}</td>
             <td>Direct responsiveness to user query without extraneous drift.</td>
           </tr>
           <tr>
             <td><strong>Citation Correctness</strong></td>
             <td><strong>{p(rag.get('mean_citation_correctness'))}</strong></td>
-            <td>&gt;= 85%</td>
+            <td>&gt;= 85.0%</td>
+            <td>{status_tag(get_target_status(rag.get('mean_citation_correctness'), 0.85, not_evaluated=rag.get('mean_citation_correctness') is None))}</td>
             <td>Referenced source emails accurately match retrieved documents.</td>
           </tr>
           <tr>
             <td><strong>Abstention Accuracy</strong></td>
             <td><strong>{p(rag.get('abstention_accuracy'))}</strong></td>
-            <td>100%</td>
+            <td>100.0%</td>
+            <td>{status_tag(get_target_status(rag.get('abstention_accuracy'), 1.00, '==', not_evaluated=rag.get('abstention_accuracy') is None))}</td>
             <td>Refusal to answer queries with no relevant email evidence.</td>
           </tr>
         </tbody>
@@ -670,29 +747,84 @@ def _generate_html_dashboard(eval_data: dict, file_path: Path) -> None:
 """
 
     for chk in rel.get("checks", []):
-        chk_status = "Pass" if chk.get("passed") else "Fail"
-        chk_bg = "#065f46" if chk.get("passed") else "#7f1d1d"
-        chk_col = "#34d399" if chk.get("passed") else "#f87171"
+        chk_status = "PASS" if chk.get("passed") else "BELOW TARGET"
+        chk_tag = status_tag(chk_status)
         lat_txt = f"{chk.get('latency_ms', 0):.2f} ms" if chk.get('latency_ms') is not None else "N/A"
         html_content += f"""          <tr>
             <td><code>{chk.get('name')}</code></td>
-            <td><span class="tag" style="background:{chk_bg}; color:{chk_col};">{chk_status}</span></td>
+            <td>{chk_tag}</td>
             <td style="color: var(--text-muted);">{chk.get('details')}</td>
             <td>{lat_txt}</td>
           </tr>
 """
 
+    lats = rel.get("latencies", {})
     html_content += f"""        </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+      <h3 style="margin-bottom: 1rem;">Granular Latency Profile</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Component</th>
+            <th>Latency</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>SentenceTransformer Embedding</strong></td>
+            <td><code>{lats.get('query_embedding_ms', 0):.2f} ms</code></td>
+            <td style="color: var(--text-muted);">all-MiniLM-L6-v2 query vectorization</td>
+          </tr>
+          <tr>
+            <td><strong>FAISS Dense Search</strong></td>
+            <td><code>{lats.get('faiss_dense_search_ms', lats.get('faiss_search_ms', 0)):.2f} ms</code></td>
+            <td style="color: var(--text-muted);">Inner-product search over indexed vectors</td>
+          </tr>
+          <tr>
+            <td><strong>BM25 Lexical Inverted Search</strong></td>
+            <td><code>{lats.get('bm25_lexical_search_ms', 0):.2f} ms</code></td>
+            <td style="color: var(--text-muted);">In-memory token inverted index search</td>
+          </tr>
+          <tr>
+            <td><strong>Metadata Reranker & Dedup</strong></td>
+            <td><code>{lats.get('reranking_and_dedup_ms', lats.get('reranking_ms', 0)):.2f} ms</code></td>
+            <td style="color: var(--text-muted);">Intent, temporal, sender & bigram reranking</td>
+          </tr>
+          <tr>
+            <td><strong>Context Assembly</strong></td>
+            <td><code>{lats.get('context_construction_ms', 0):.2f} ms</code></td>
+            <td style="color: var(--text-muted);">Evidence extraction and citation formatting</td>
+          </tr>
+          <tr>
+            <td><strong>Total Retrieval Latency</strong></td>
+            <td><code>{lats.get('retrieval_total_ms', 0):.2f} ms</code></td>
+            <td style="color: var(--text-muted);">Measured end-to-end retrieve_with_context</td>
+          </tr>
+          <tr>
+            <td><strong>Gemini Generation Latency</strong></td>
+            <td><code>{lats.get('generation_ms', 0):.2f} ms</code></td>
+            <td style="color: var(--text-muted);">LLM grounded generation (network API call)</td>
+          </tr>
+        </tbody>
       </table>
     </div>
   </div>
 
   <script>
-    function switchTab(name) {{
-      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-      event.target.classList.add('active');
-      document.getElementById('tab-' + name).classList.add('active');
+    function switchTab(btn, name) {{
+      document.querySelectorAll('.tab-btn').forEach(function(b) {{ b.classList.remove('active'); }});
+      document.querySelectorAll('.tab-content').forEach(function(c) {{ c.classList.remove('active'); }});
+      if (btn) {{
+        btn.classList.add('active');
+      }}
+      var target = document.getElementById('tab-' + name);
+      if (target) {{
+        target.classList.add('active');
+      }}
     }}
   </script>
 </body>

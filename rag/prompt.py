@@ -133,3 +133,24 @@ def build_conversation_prompt(
 def build_contextualize_prompt(query: str, history: str) -> str:
     """Build a prompt to contextualize a follow-up query."""
     return CONTEXTUALIZE_QUERY_PROMPT.format(history=history, query=query)
+
+
+def build_context_text(results: list) -> str:
+    """Format search results into structured evidence context for LLM generation."""
+    evidence_items = []
+    for i, result in enumerate(results, 1):
+        snippet = getattr(result, "snippet", "") or getattr(result, "text", "") or ""
+        msg_id = getattr(result, "message_id", "")
+        subj = getattr(result, "subject", "")
+        sname = getattr(result, "sender_name", "")
+        semail = getattr(result, "sender_email", "")
+        date = getattr(result, "date", "")
+        evidence_items.append(
+            f"[Source {i}] (Email {i})\n"
+            f"Message ID: {msg_id}\n"
+            f"Subject: {subj}\n"
+            f"From: {sname} <{semail}>\n"
+            f"Date: {date}\n\n"
+            f"{snippet.strip()}\n"
+        )
+    return "\n---\n\n".join(evidence_items)
