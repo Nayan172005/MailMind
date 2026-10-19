@@ -88,3 +88,5 @@ token.json
 
 # Local runner shim
 powershell.cmd
+
+start_app_cheatsheet.txt

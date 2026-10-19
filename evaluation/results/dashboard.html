@@ -44,7 +44,7 @@
     }
     .grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 1.25rem;
       margin-bottom: 2rem;
     }
@@ -73,6 +73,7 @@
       font-weight: 600;
       cursor: pointer;
       border-bottom: 2px solid transparent;
+      transition: color 0.2s, border-bottom-color 0.2s;
     }
     .tab-btn.active {
       color: var(--primary);
@@ -93,20 +94,9 @@
     }
     th { background: #131d31; color: var(--text-muted); font-weight: 600; }
     tr:hover { background: rgba(255,255,255,0.02); }
-    .bar-container {
-      background: #334155;
-      border-radius: 4px;
-      height: 8px;
-      width: 100px;
-      overflow: hidden;
-      display: inline-block;
-      vertical-align: middle;
-      margin-left: 0.5rem;
-    }
-    .bar-fill { background: var(--primary); height: 100%; }
     .tag {
       display: inline-block;
-      padding: 0.15rem 0.5rem;
+      padding: 0.2rem 0.55rem;
       border-radius: 4px;
       font-size: 0.75rem;
       font-family: monospace;
@@ -121,57 +111,68 @@
       <p style="color: var(--text-muted); font-size: 0.9rem;">Intelligent Email Summarization & Retrieval System Benchmark</p>
     </div>
     <div style="text-align: right;">
-      <span class="badge">Benchmark v1.0.0</span>
-      <div style="color: var(--text-muted); font-size: 0.8rem; margin-top: 0.3rem;">Oct 17, 2026 16:15</div>
+      <span class="badge">Benchmark 1.0.0</span>
+      <div style="color: var(--text-muted); font-size: 0.8rem; margin-top: 0.3rem;">Oct 18, 2026 17:15</div>
     </div>
   </div>
 
   <div class="grid">
     <div class="card">
+      <div class="title">Recall@5</div>
+      <div class="value">72.5%</div>
+      <div class="sub">Legacy: 50.0%</div>
+    </div>
+    <div class="card">
       <div class="title">Recall@10</div>
-      <div class="value">73.6%</div>
+      <div class="value">81.7%</div>
       <div class="sub">Legacy: 57.4%</div>
     </div>
     <div class="card">
-      <div class="title">nDCG@10 (Graded)</div>
-      <div class="value">64.2%</div>
-      <div class="sub">Legacy: 51.1%</div>
+      <div class="title">Recall@20</div>
+      <div class="value">85.3%</div>
+      <div class="sub">Legacy: 68.3%</div>
     </div>
     <div class="card">
-      <div class="title">Precision@5</div>
-      <div class="value">26.0%</div>
-      <div class="sub">Legacy: 19.6%</div>
+      <div class="title">Success@10</div>
+      <div class="value">89.4%</div>
+      <div class="sub">Legacy: 72.3%</div>
+    </div>
+    <div class="card">
+      <div class="title">Negative FP Rate</div>
+      <div class="value">0/3</div>
+      <div class="sub">0.0% False Positives</div>
     </div>
     <div class="card">
       <div class="title">RAG Faithfulness</div>
-      <div class="value">89.3%</div>
-      <div class="sub">Correctness: 88.0%</div>
+      <div class="value">83.3%</div>
+      <div class="sub">Correctness: 95.8%</div>
     </div>
     <div class="card">
       <div class="title">Classifier Macro-F1</div>
       <div class="value">88.4%</div>
-      <div class="sub">Accuracy: 88.8% (542 test)</div>
+      <div class="sub">Accuracy: 88.8%</div>
     </div>
   </div>
 
   <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('retrieval')">Retrieval Comparison</button>
-    <button class="tab-btn" onclick="switchTab('queries')">Per-Query Benchmark (50)</button>
-    <button class="tab-btn" onclick="switchTab('rag')">RAG Evaluation</button>
-    <button class="tab-btn" onclick="switchTab('classifier')">BiLSTM Classifier</button>
-    <button class="tab-btn" onclick="switchTab('reliability')">Reliability & Latency</button>
+    <button class="tab-btn active" onclick="switchTab(this, 'retrieval')">Retrieval Comparison</button>
+    <button class="tab-btn" onclick="switchTab(this, 'queries')">Per-Query Benchmark (50)</button>
+    <button class="tab-btn" onclick="switchTab(this, 'rag')">RAG Evaluation</button>
+    <button class="tab-btn" onclick="switchTab(this, 'classifier')">BiLSTM Classifier</button>
+    <button class="tab-btn" onclick="switchTab(this, 'reliability')">Reliability & Latency</button>
   </div>
 
-  <!-- Tab 1: Retrieval -->
+  <!-- Tab 1: Retrieval Comparison -->
   <div id="tab-retrieval" class="tab-content active">
     <div class="card">
-      <h3 style="margin-bottom: 1rem;">Retrieval Engine Comparison (Identical Benchmark & Corpus)</h3>
+      <h3 style="margin-bottom: 1rem;">Retrieval Comparison (Identical Benchmark & Corpus)</h3>
       <table>
         <thead>
           <tr>
             <th>Metric</th>
             <th>Legacy Retriever</th>
             <th>Improved Retriever</th>
+            <th>Engineering Target</th>
             <th>Status</th>
           </tr>
         </thead>
@@ -179,56 +180,111 @@
           <tr>
             <td><strong>Recall@5</strong></td>
             <td>50.0%</td>
-            <td><strong>63.7%</strong></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td><strong>72.5%</strong></td>
+            <td>&gt;= 80.0%</td>
+            <td><span class="tag" style="background:#7f1d1d; color:#f87171; font-weight:600;">BELOW TARGET</span></td>
           </tr>
           <tr>
             <td><strong>Recall@10</strong></td>
             <td>57.4%</td>
-            <td><strong>73.6%</strong></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td><strong>81.7%</strong></td>
+            <td>&gt;= 80.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><strong>Recall@20</strong></td>
             <td>68.3%</td>
-            <td><strong>79.1%</strong></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
-          </tr>
-          <tr>
-            <td><strong>Precision@5</strong></td>
-            <td>19.6%</td>
-            <td><strong>26.0%</strong></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
-          </tr>
-          <tr>
-            <td><strong>Precision@10</strong></td>
-            <td>11.5%</td>
-            <td><strong>15.3%</strong></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
-          </tr>
-          <tr>
-            <td><strong>MRR</strong></td>
-            <td>56.1%</td>
-            <td><strong>65.4%</strong></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
-          </tr>
-          <tr>
-            <td><strong>nDCG@10 (Graded)</strong></td>
-            <td>51.1%</td>
-            <td><strong>64.2%</strong></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td><strong>85.3%</strong></td>
+            <td>&gt;= 80.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><strong>Success@10 (Hit@10)</strong></td>
             <td>72.3%</td>
-            <td><strong>83.0%</strong></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td><strong>89.4%</strong></td>
+            <td>&gt;= 85.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
-            <td><strong>Negative Query FP Rate</strong></td>
+            <td><strong>Negative Query False-Positive Rate</strong></td>
+            <td>3/3 (100.0%)</td>
+            <td><strong>0/3 (0.0%)</strong></td>
+            <td>0/3 (0.0%)</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+      <h3 style="margin-bottom: 1rem;">Category-wise Retrieval Performance</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Queries</th>
+            <th>Recall@5</th>
+            <th>Recall@10</th>
+            <th>Recall@20</th>
+            <th>Success@10</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="tag">academic</span></td>
+            <td>9</td>
+            <td>83.3%</td>
+            <td><strong>83.3%</strong></td>
+            <td>N/A</td>
             <td>100.0%</td>
-            <td><strong>0.0%</strong></td>
-            <td><span class="tag" style="background:#1e3a8a; color:#60a5fa;">Controlled</span></td>
+          </tr>
+          <tr>
+            <td><span class="tag">placement</span></td>
+            <td>21</td>
+            <td>76.6%</td>
+            <td><strong>84.1%</strong></td>
+            <td>N/A</td>
+            <td>90.5%</td>
+          </tr>
+          <tr>
+            <td><span class="tag">schedules_venues</span></td>
+            <td>5</td>
+            <td>100.0%</td>
+            <td><strong>100.0%</strong></td>
+            <td>N/A</td>
+            <td>100.0%</td>
+          </tr>
+          <tr>
+            <td><span class="tag">security</span></td>
+            <td>4</td>
+            <td>75.0%</td>
+            <td><strong>100.0%</strong></td>
+            <td>N/A</td>
+            <td>100.0%</td>
+          </tr>
+          <tr>
+            <td><span class="tag">sender_based</span></td>
+            <td>4</td>
+            <td>12.5%</td>
+            <td><strong>37.5%</strong></td>
+            <td>N/A</td>
+            <td>50.0%</td>
+          </tr>
+          <tr>
+            <td><span class="tag">temporal</span></td>
+            <td>2</td>
+            <td>25.0%</td>
+            <td><strong>37.5%</strong></td>
+            <td>N/A</td>
+            <td>50.0%</td>
+          </tr>
+          <tr>
+            <td><span class="tag">summarization</span></td>
+            <td>2</td>
+            <td>75.0%</td>
+            <td><strong>100.0%</strong></td>
+            <td>N/A</td>
+            <td>100.0%</td>
           </tr>
         </tbody>
       </table>
@@ -244,11 +300,13 @@
           <tr>
             <th>ID</th>
             <th>Category</th>
+            <th>Split</th>
             <th>Query</th>
-            <th>Top Retrieved Email</th>
+            <th>Top Retrieved Evidence</th>
+            <th>R@5</th>
             <th>R@10</th>
-            <th>P@5</th>
-            <th>nDCG@10</th>
+            <th>R@20</th>
+            <th>S@10</th>
             <th>Status</th>
           </tr>
         </thead>
@@ -256,502 +314,602 @@
           <tr>
             <td><span class="tag">q01</span></td>
             <td><span class="tag">academic</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">dev</span></td>
             <td>NPTEL course registration</td>
-            <td style="color: var(--text-muted);">NPTEL Newsletter: NPTEL Courses Begin Ja</td>
-            <td>0.0%</td>
-            <td>0.0%</td>
-            <td>0.0%</td>
-            <td><span class="tag" style="background:#7f1d1d; color:#f87171;">Flagged</span></td>
+            <td style="color: var(--text-muted);">NPTEL Newsletter: NPTEL Courses Begin Jan 19,</td>
+            <td>33.3%</td>
+            <td>33.3%</td>
+            <td>33.3%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#7f1d1d; color:#f87171; font-weight:600;">BELOW TARGET</span></td>
           </tr>
           <tr>
             <td><span class="tag">q02</span></td>
             <td><span class="tag">academic</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>SWAYAM NPTEL approved course list from SCOPE</td>
-            <td style="color: var(--text-muted);">Important:List of SWAYAM NPTEL approved </td>
-            <td>33.3%</td>
-            <td>20.0%</td>
-            <td>72.6%</td>
-            <td><span class="tag" style="background:#7f1d1d; color:#f87171;">Flagged</span></td>
+            <td style="color: var(--text-muted);">Important:List of SWAYAM NPTEL approved cours</td>
+            <td>66.7%</td>
+            <td>66.7%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#7f1d1d; color:#f87171; font-weight:600;">BELOW TARGET</span></td>
           </tr>
           <tr>
             <td><span class="tag">q03</span></td>
             <td><span class="tag">academic</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">dev</span></td>
             <td>RoboWars workshop batch 2 registration freshers</td>
-            <td style="color: var(--text-muted);">Exclusive for Freshers | RoboWars Worksh</td>
+            <td style="color: var(--text-muted);">Exclusive for Freshers | RoboWars Workshop â€</td>
             <td>100.0%</td>
-            <td>20.0%</td>
             <td>100.0%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q04</span></td>
             <td><span class="tag">academic</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>VITTBI 2-month hands-on training program</td>
-            <td style="color: var(--text-muted);">Fwd: Request to forward 2-Month Hands-on</td>
+            <td style="color: var(--text-muted);">Fwd: Request to forward 2-Month Hands-on Trai</td>
             <td>50.0%</td>
-            <td>20.0%</td>
-            <td>82.6%</td>
-            <td><span class="tag" style="background:#7f1d1d; color:#f87171;">Flagged</span></td>
+            <td>50.0%</td>
+            <td>50.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#7f1d1d; color:#f87171; font-weight:600;">BELOW TARGET</span></td>
           </tr>
           <tr>
             <td><span class="tag">q05</span></td>
             <td><span class="tag">academic</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>AICTE scholarship awareness webinar notification</td>
-            <td style="color: var(--text-muted);">Fwd: Invitation to Attend Awareness Webi</td>
+            <td style="color: var(--text-muted);">Fwd: Invitation to Attend Awareness Webinar o</td>
             <td>100.0%</td>
-            <td>40.0%</td>
             <td>100.0%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q06</span></td>
             <td><span class="tag">academic</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">dev</span></td>
             <td>FinTech program IIT Madras NPTEL newsletter</td>
-            <td style="color: var(--text-muted);">NPTEL Newsletter: Master the Future of F</td>
+            <td style="color: var(--text-muted);">NPTEL Newsletter: Master the Future of Financ</td>
             <td>100.0%</td>
-            <td>20.0%</td>
             <td>100.0%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q07</span></td>
             <td><span class="tag">academic</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>SOP for patent incentive and IPR notices</td>
-            <td style="color: var(--text-muted);">Standard Operating Procedure (SOP) for P</td>
+            <td style="color: var(--text-muted);">Standard Operating Procedure (SOP) for Patent</td>
             <td>100.0%</td>
-            <td>40.0%</td>
             <td>100.0%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q08</span></td>
             <td><span class="tag">academic</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Important open elective courses SWAYAM NPTEL wish list</td>
-            <td style="color: var(--text-muted);">Important Open Elective Courses: SWAYAM </td>
+            <td style="color: var(--text-muted);">Important Open Elective Courses: SWAYAM / NPT</td>
             <td>100.0%</td>
-            <td>40.0%</td>
             <td>100.0%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q09</span></td>
             <td><span class="tag">academic</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>AICTE PG Scholarship guidelines and stipend</td>
-            <td style="color: var(--text-muted);">AICTE PG Scholarship 2023 - Notification</td>
+            <td style="color: var(--text-muted);">AICTE PG Scholarship 2023 - Notification - re</td>
             <td>100.0%</td>
-            <td>40.0%</td>
             <td>100.0%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q10</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">dev</span></td>
             <td>When is my Microsoft assessment?</td>
-            <td style="color: var(--text-muted);">You have been added to a class team in M</td>
+            <td style="color: var(--text-muted);">Thank you for your interest in Microsoft!</td>
+            <td>66.7%</td>
             <td>100.0%</td>
-            <td>40.0%</td>
-            <td>57.4%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q11</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Nokia online test</td>
-            <td style="color: var(--text-muted);">Re: NOKIA Online Test is Scheduled on 07</td>
+            <td style="color: var(--text-muted);">Re: NOKIA Online Test is Scheduled on 07th Ju</td>
             <td>100.0%</td>
-            <td>80.0%</td>
-            <td>78.2%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q12</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Tata Electronics online test</td>
-            <td style="color: var(--text-muted);">Tata motors online test is scheduled on </td>
+            <td style="color: var(--text-muted);">Tata Electronic online test is scheduled on 3</td>
             <td>100.0%</td>
-            <td>40.0%</td>
-            <td>58.7%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q13</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>VISA online test</td>
             <td style="color: var(--text-muted);">VISA online test - Reg.</td>
+            <td>75.0%</td>
             <td>100.0%</td>
-            <td>60.0%</td>
-            <td>64.2%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q14</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">dev</span></td>
             <td>Optum online test assessment</td>
-            <td style="color: var(--text-muted);">Optum online test is scheduled on 3rd Oc</td>
+            <td style="color: var(--text-muted);">Optum online test is scheduled on 3rd October</td>
+            <td>66.7%</td>
+            <td>66.7%</td>
+            <td>66.7%</td>
             <td>100.0%</td>
-            <td>40.0%</td>
-            <td>96.1%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td><span class="tag" style="background:#7f1d1d; color:#f87171; font-weight:600;">BELOW TARGET</span></td>
           </tr>
           <tr>
             <td><span class="tag">q15</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>emails about upcoming online tests and assessments</td>
-            <td style="color: var(--text-muted);">Re: Tata Electronic online test is sched</td>
+            <td style="color: var(--text-muted);">Ericsson - Online test (Coding Assessment) is</td>
             <td>0.0%</td>
             <td>0.0%</td>
+            <td>25.0%</td>
             <td>0.0%</td>
-            <td><span class="tag" style="background:#7f1d1d; color:#f87171;">Flagged</span></td>
+            <td><span class="tag" style="background:#7f1d1d; color:#f87171; font-weight:600;">BELOW TARGET</span></td>
           </tr>
           <tr>
             <td><span class="tag">q16</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Ericsson internship selection list</td>
-            <td style="color: var(--text-muted);">Congratulations !! Ericsson Super Dream </td>
+            <td style="color: var(--text-muted);">Congratulations !! Ericsson Super Dream Inter</td>
             <td>100.0%</td>
-            <td>40.0%</td>
-            <td>58.7%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q17</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Couchbase super dream internship selection list</td>
-            <td style="color: var(--text-muted);">Congratulations !! Couchbase Super Dream</td>
+            <td style="color: var(--text-muted);">Congratulations !! Couchbase Super Dream Inte</td>
             <td>50.0%</td>
-            <td>20.0%</td>
-            <td>82.6%</td>
-            <td><span class="tag" style="background:#7f1d1d; color:#f87171;">Flagged</span></td>
+            <td>50.0%</td>
+            <td>50.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#7f1d1d; color:#f87171; font-weight:600;">BELOW TARGET</span></td>
           </tr>
           <tr>
             <td><span class="tag">q18</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">dev</span></td>
             <td>Schneider Electric super dream internship selection</td>
-            <td style="color: var(--text-muted);">Congratulations!! Schneider Electric Sup</td>
+            <td style="color: var(--text-muted);">Congratulations!! Schneider Electric Super Dr</td>
             <td>100.0%</td>
-            <td>40.0%</td>
-            <td>68.9%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q19</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Matrecomm dream internship selection list</td>
-            <td style="color: var(--text-muted);">Congratulations !! Matrecomm Dream Inter</td>
+            <td style="color: var(--text-muted);">Congratulations !! Matrecomm Dream Internship</td>
             <td>50.0%</td>
-            <td>20.0%</td>
-            <td>82.6%</td>
-            <td><span class="tag" style="background:#7f1d1d; color:#f87171;">Flagged</span></td>
+            <td>50.0%</td>
+            <td>50.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#7f1d1d; color:#f87171; font-weight:600;">BELOW TARGET</span></td>
           </tr>
           <tr>
             <td><span class="tag">q20</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>CDC Summer intern selects 2027 batch</td>
-            <td style="color: var(--text-muted);">kind attention!! Summer intern selects -</td>
+            <td style="color: var(--text-muted);">kind attention!! Summer intern selects - 2027</td>
             <td>50.0%</td>
-            <td>20.0%</td>
-            <td>82.6%</td>
-            <td><span class="tag" style="background:#7f1d1d; color:#f87171;">Flagged</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q21</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Fischer Jordan super dream placement registration</td>
-            <td style="color: var(--text-muted);">Re: Fischer Jordan Super Dream Internshi</td>
+            <td style="color: var(--text-muted);">Re: Fischer Jordan Super Dream Internship / P</td>
             <td>100.0%</td>
-            <td>40.0%</td>
             <td>100.0%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q22</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">dev</span></td>
             <td>Wakefit dream core internship registration</td>
-            <td style="color: var(--text-muted);">Re: Wakefit Dream Core Internship Regist</td>
+            <td style="color: var(--text-muted);">Re: Wakefit Dream Core Internship Registratio</td>
             <td>100.0%</td>
-            <td>40.0%</td>
             <td>100.0%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q23</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Work India super dream placement registration</td>
-            <td style="color: var(--text-muted);">Work India Super Dream Internship / Plac</td>
+            <td style="color: var(--text-muted);">Work India Super Dream Internship / Placement</td>
             <td>100.0%</td>
-            <td>20.0%</td>
             <td>100.0%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q24</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Pepagora regular internship registration</td>
-            <td style="color: var(--text-muted);">Pepagora (India) Pvt Ltd regular interns</td>
+            <td style="color: var(--text-muted);">Pepagora (India) Pvt Ltd regular internship r</td>
             <td>100.0%</td>
-            <td>20.0%</td>
             <td>100.0%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q25</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>VENTURA AUTOMATION SERVICES internship registration</td>
-            <td style="color: var(--text-muted);">VENTURA AUTOMATION SERVICES INC Regular </td>
+            <td style="color: var(--text-muted);">VENTURA AUTOMATION SERVICES INC Regular Inter</td>
             <td>100.0%</td>
-            <td>20.0%</td>
             <td>100.0%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q26</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Intain Campus FinTech Challenge 2026</td>
-            <td style="color: var(--text-muted);">Internship Opportunity for 2027 Batch St</td>
+            <td style="color: var(--text-muted);">Internship Opportunity for 2027 Batch Student</td>
             <td>100.0%</td>
-            <td>20.0%</td>
             <td>100.0%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q27</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">dev</span></td>
             <td>Honeywell campus connect hackathon</td>
-            <td style="color: var(--text-muted);">Honeywell Technologies Campus Connect Ha</td>
+            <td style="color: var(--text-muted);">Honeywell Technologies Campus Connect Hackath</td>
             <td>100.0%</td>
-            <td>40.0%</td>
             <td>100.0%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q28</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>TCS pre-placement talk placement policy orientation</td>
-            <td style="color: var(--text-muted);">TCS Pre-placement Talk & Placement Polic</td>
+            <td style="color: var(--text-muted);">TCS Pre-placement Talk & Placement Policy Ori</td>
             <td>100.0%</td>
-            <td>40.0%</td>
-            <td>53.2%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q29</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>placement interviews</td>
-            <td style="color: var(--text-muted);">[Mandatory] Interview Prep from VIT Chen</td>
+            <td style="color: var(--text-muted);">[Mandatory] Interview Prep from VIT Chennai w</td>
             <td>0.0%</td>
             <td>0.0%</td>
             <td>0.0%</td>
-            <td><span class="tag" style="background:#7f1d1d; color:#f87171;">Flagged</span></td>
+            <td>0.0%</td>
+            <td><span class="tag" style="background:#7f1d1d; color:#f87171; font-weight:600;">BELOW TARGET</span></td>
           </tr>
           <tr>
             <td><span class="tag">q30</span></td>
             <td><span class="tag">placement</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Mandatory mock interviews with Expert Hire</td>
-            <td style="color: var(--text-muted);">[Mandatory] Interview Prep from VIT Chen</td>
+            <td style="color: var(--text-muted);">â€‹Mandatory Mock interviews with Expert Hire</td>
+            <td>50.0%</td>
             <td>100.0%</td>
-            <td>20.0%</td>
-            <td>60.4%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q31</span></td>
             <td><span class="tag">schedules_venues</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">dev</span></td>
             <td>Pixel Compute online test venue</td>
-            <td style="color: var(--text-muted);">Re: Pixel Compute Technologies Pvt Ltd o</td>
+            <td style="color: var(--text-muted);">Re: Pixel Compute Technologies Pvt Ltd online</td>
             <td>100.0%</td>
-            <td>40.0%</td>
-            <td>92.0%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q32</span></td>
             <td><span class="tag">schedules_venues</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Infosys PPT online test Anna auditorium</td>
-            <td style="color: var(--text-muted);">Re: Infosys PPT & Online Test Is Schedul</td>
+            <td style="color: var(--text-muted);">Re: Infosys PPT & Online Test Is Scheduled on</td>
             <td>100.0%</td>
-            <td>80.0%</td>
-            <td>95.5%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q33</span></td>
             <td><span class="tag">schedules_venues</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">dev</span></td>
             <td>Pixel Compute online test PRP 717 venue and timings</td>
-            <td style="color: var(--text-muted);">Re: Pixel Compute PPT & Online Test – Sc</td>
+            <td style="color: var(--text-muted);">Re: Pixel Compute PPT & Online Test â€“ Sched</td>
             <td>100.0%</td>
-            <td>40.0%</td>
-            <td>62.4%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q34</span></td>
             <td><span class="tag">schedules_venues</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Infosys PPT Anna Auditorium batch 2 schedule</td>
-            <td style="color: var(--text-muted);">Infosys PPT & Online Test Is Scheduled o</td>
+            <td style="color: var(--text-muted);">Infosys PPT & Online Test Is Scheduled on Bat</td>
             <td>100.0%</td>
-            <td>40.0%</td>
-            <td>65.1%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q35</span></td>
             <td><span class="tag">schedules_venues</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Where are CDC mock interviews conducted?</td>
-            <td style="color: var(--text-muted);">Report Immediately : Bazaarvoice Intervi</td>
+            <td style="color: var(--text-muted);">â€‹Mandatory Mock interviews with Expert Hire</td>
             <td>100.0%</td>
-            <td>0.0%</td>
-            <td>30.1%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q36</span></td>
             <td><span class="tag">security</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Google security alert sign in</td>
             <td style="color: var(--text-muted);">Security alert</td>
-            <td>0.0%</td>
-            <td>0.0%</td>
-            <td>0.0%</td>
-            <td><span class="tag" style="background:#7f1d1d; color:#f87171;">Flagged</span></td>
+            <td>50.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q37</span></td>
             <td><span class="tag">security</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Security alert for Google account</td>
             <td style="color: var(--text-muted);">Security alert</td>
-            <td>0.0%</td>
-            <td>0.0%</td>
-            <td>0.0%</td>
-            <td><span class="tag" style="background:#7f1d1d; color:#f87171;">Flagged</span></td>
+            <td>50.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q38</span></td>
             <td><span class="tag">security</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Password reset OTP and security notices</td>
             <td style="color: var(--text-muted);">Reset/Forgot Password - OTP</td>
             <td>100.0%</td>
-            <td>40.0%</td>
             <td>100.0%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q39</span></td>
             <td><span class="tag">security</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">dev</span></td>
             <td>Recent security alerts on Google account</td>
             <td style="color: var(--text-muted);">Security alert</td>
-            <td>50.0%</td>
-            <td>20.0%</td>
-            <td>61.3%</td>
-            <td><span class="tag" style="background:#7f1d1d; color:#f87171;">Flagged</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q40</span></td>
             <td><span class="tag">sender_based</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>emails from CDC about placement registration</td>
-            <td style="color: var(--text-muted);">Kind attention!! 2027 Passout students -</td>
+            <td style="color: var(--text-muted);">Fwd: Placement Registration 2027 Batch â€“ Ph</td>
             <td>0.0%</td>
             <td>0.0%</td>
+            <td>25.0%</td>
             <td>0.0%</td>
-            <td><span class="tag" style="background:#7f1d1d; color:#f87171;">Flagged</span></td>
+            <td><span class="tag" style="background:#7f1d1d; color:#f87171; font-weight:600;">BELOW TARGET</span></td>
           </tr>
           <tr>
             <td><span class="tag">q41</span></td>
             <td><span class="tag">sender_based</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">dev</span></td>
             <td>Emails from Helpdesk CDC regarding 2027 batch queries</td>
-            <td style="color: var(--text-muted);">Re: ​Urgent - Winter sem CDC on Duty - 2</td>
-            <td>50.0%</td>
+            <td style="color: var(--text-muted);">Re: â€‹Urgent - Winter sem CDC on Duty - 2026</td>
             <td>0.0%</td>
-            <td>17.7%</td>
-            <td><span class="tag" style="background:#7f1d1d; color:#f87171;">Flagged</span></td>
+            <td>50.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#7f1d1d; color:#f87171; font-weight:600;">BELOW TARGET</span></td>
           </tr>
           <tr>
             <td><span class="tag">q42</span></td>
             <td><span class="tag">sender_based</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Emails from Director Physical Education sports achievements</td>
-            <td style="color: var(--text-muted);">Sports Achievement</td>
+            <td style="color: var(--text-muted);">Sports Achievements 2026</td>
+            <td>50.0%</td>
             <td>100.0%</td>
-            <td>20.0%</td>
-            <td>48.4%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q43</span></td>
             <td><span class="tag">sender_based</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Emails from Dean Academic Research journal publications</td>
-            <td style="color: var(--text-muted);">Journal publication details of VIT for D</td>
+            <td style="color: var(--text-muted);">Undergraduate (UG) Research publications and </td>
             <td>0.0%</td>
             <td>0.0%</td>
             <td>0.0%</td>
-            <td><span class="tag" style="background:#7f1d1d; color:#f87171;">Flagged</span></td>
+            <td>0.0%</td>
+            <td><span class="tag" style="background:#7f1d1d; color:#f87171; font-weight:600;">BELOW TARGET</span></td>
           </tr>
           <tr>
             <td><span class="tag">q44</span></td>
             <td><span class="tag">temporal</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>most recent placement company</td>
-            <td style="color: var(--text-muted);">Hi Nayan, Worried about placements?</td>
+            <td style="color: var(--text-muted);">Updated Placement Norms â€“ 2027 Batch</td>
+            <td>50.0%</td>
             <td>75.0%</td>
-            <td>0.0%</td>
-            <td>38.2%</td>
-            <td><span class="tag" style="background:#7f1d1d; color:#f87171;">Flagged</span></td>
+            <td>75.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#7f1d1d; color:#f87171; font-weight:600;">BELOW TARGET</span></td>
           </tr>
           <tr>
             <td><span class="tag">q45</span></td>
             <td><span class="tag">temporal</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Internships announced in July 2026</td>
-            <td style="color: var(--text-muted);">Colorado State University USA-2026 Summe</td>
+            <td style="color: var(--text-muted);">Fwd: Advertisement for VIT-CYSS Internship Pr</td>
             <td>0.0%</td>
             <td>0.0%</td>
+            <td>33.3%</td>
             <td>0.0%</td>
-            <td><span class="tag" style="background:#7f1d1d; color:#f87171;">Flagged</span></td>
+            <td><span class="tag" style="background:#7f1d1d; color:#f87171; font-weight:600;">BELOW TARGET</span></td>
           </tr>
           <tr>
             <td><span class="tag">q46</span></td>
             <td><span class="tag">summarization</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>Fake internship and placement emails warning alert</td>
-            <td style="color: var(--text-muted);">Important Alert: Beware of Fake Internsh</td>
+            <td style="color: var(--text-muted);">Important Alert: Beware of Fake Internship/Pl</td>
             <td>100.0%</td>
-            <td>40.0%</td>
-            <td>79.7%</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q47</span></td>
             <td><span class="tag">summarization</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">dev</span></td>
             <td>Summarize the instructions for NPTEL July 2026 course registration</td>
-            <td style="color: var(--text-muted);">NPTEL: Exam Registration is open now for</td>
+            <td style="color: var(--text-muted);">Circular _ NPTEL Course registration (July 20</td>
             <td>50.0%</td>
-            <td>0.0%</td>
-            <td>27.5%</td>
-            <td><span class="tag" style="background:#7f1d1d; color:#f87171;">Flagged</span></td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q48</span></td>
             <td><span class="tag">irrelevant</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>recipe for chocolate cake with walnuts</td>
             <td style="color: var(--text-muted);"></td>
             <td>N/A</td>
             <td>N/A</td>
             <td>N/A</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>N/A</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q49</span></td>
             <td><span class="tag">irrelevant</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">dev</span></td>
             <td>Who won the 1994 FIFA World Cup in the United States?</td>
             <td style="color: var(--text-muted);"></td>
             <td>N/A</td>
             <td>N/A</td>
             <td>N/A</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>N/A</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
           <tr>
             <td><span class="tag">q50</span></td>
             <td><span class="tag">irrelevant</span></td>
+            <td><span class="tag" style="background: #1e3a8a; color: #60a5fa;">test</span></td>
             <td>How to replace brake pads on a 2018 Honda Civic</td>
             <td style="color: var(--text-muted);"></td>
             <td>N/A</td>
             <td>N/A</td>
             <td>N/A</td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td>N/A</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
           </tr>
         </tbody>
       </table>
@@ -767,39 +925,45 @@
           <tr>
             <th>Dimension</th>
             <th>Score</th>
-            <th>Target</th>
+            <th>Engineering Target</th>
+            <th>Status</th>
             <th>Rubric Definition</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td><strong>Answer Groundedness</strong></td>
-            <td><strong>89.3%</strong></td>
-            <td>&gt;= 90%</td>
+            <td><strong>83.3%</strong></td>
+            <td>&gt;= 90.0%</td>
+            <td><span class="tag" style="background:#7f1d1d; color:#f87171; font-weight:600;">BELOW TARGET</span></td>
             <td>Zero fabricated claims; every fact anchored in retrieved email body.</td>
           </tr>
           <tr>
             <td><strong>Answer Correctness</strong></td>
-            <td><strong>88.0%</strong></td>
-            <td>&gt;= 85%</td>
+            <td><strong>95.8%</strong></td>
+            <td>&gt;= 85.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
             <td>Agreement with verified reference answer key facts.</td>
           </tr>
           <tr>
             <td><strong>Answer Relevance</strong></td>
-            <td><strong>96.1%</strong></td>
-            <td>&gt;= 90%</td>
+            <td><strong>100.0%</strong></td>
+            <td>&gt;= 90.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
             <td>Direct responsiveness to user query without extraneous drift.</td>
           </tr>
           <tr>
             <td><strong>Citation Correctness</strong></td>
-            <td><strong>100.0%</strong></td>
-            <td>&gt;= 85%</td>
+            <td><strong>87.5%</strong></td>
+            <td>&gt;= 85.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
             <td>Referenced source emails accurately match retrieved documents.</td>
           </tr>
           <tr>
             <td><strong>Abstention Accuracy</strong></td>
             <td><strong>100.0%</strong></td>
-            <td>100%</td>
+            <td>100.0%</td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
             <td>Refusal to answer queries with no relevant email evidence.</td>
           </tr>
         </tbody>
@@ -865,45 +1029,95 @@
         <tbody>
           <tr>
             <td><code>email_parsing_and_metadata_preservation</code></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
             <td style="color: var(--text-muted);">Verified whitespace normalization and metadata preservation.</td>
-            <td>0.17 ms</td>
+            <td>0.15 ms</td>
           </tr>
           <tr>
             <td><code>classification_and_spam_handling_paths</code></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
             <td style="color: var(--text-muted);">Classifier predicted: spam=spam (0.89), imp=important (0.91).</td>
-            <td>1111.65 ms</td>
+            <td>1144.57 ms</td>
           </tr>
           <tr>
             <td><code>embedding_and_index_consistency</code></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
             <td style="color: var(--text-muted);">Embedding dim=384, Index vectors=13297, Unique emails=10782.</td>
-            <td>11.25 ms</td>
+            <td>10.21 ms</td>
           </tr>
           <tr>
             <td><code>retrieval_and_source_attribution</code></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
             <td style="color: var(--text-muted);">Retrieved 3 results with valid SearchResult schemas and scores.</td>
-            <td>34.37 ms</td>
+            <td>37.52 ms</td>
           </tr>
           <tr>
             <td><code>rag_abstention_and_error_handling</code></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
             <td style="color: var(--text-muted);">Verified safe abstention on empty context without API call.</td>
             <td>0.01 ms</td>
           </tr>
           <tr>
             <td><code>duplicate_ingestion_and_idempotency</code></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
             <td style="color: var(--text-muted);">Duplicate chunk rejected: added=0, vectors before=1, after=1.</td>
-            <td>15.91 ms</td>
+            <td>22.58 ms</td>
           </tr>
           <tr>
             <td><code>gmail_pubsub_security_health</code></td>
-            <td><span class="tag" style="background:#065f46; color:#34d399;">Pass</span></td>
+            <td><span class="tag" style="background:#065f46; color:#34d399; font-weight:600;">PASS</span></td>
             <td style="color: var(--text-muted);">Verified unauthenticated and malformed Pub/Sub push requests are safely rejected (HTTP 401).</td>
-            <td>198.12 ms</td>
+            <td>207.19 ms</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top: 1.5rem;">
+      <h3 style="margin-bottom: 1rem;">Granular Latency Profile</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Component</th>
+            <th>Latency</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>SentenceTransformer Embedding</strong></td>
+            <td><code>12.48 ms</code></td>
+            <td style="color: var(--text-muted);">all-MiniLM-L6-v2 query vectorization</td>
+          </tr>
+          <tr>
+            <td><strong>FAISS Dense Search</strong></td>
+            <td><code>1.47 ms</code></td>
+            <td style="color: var(--text-muted);">Inner-product search over indexed vectors</td>
+          </tr>
+          <tr>
+            <td><strong>BM25 Lexical Inverted Search</strong></td>
+            <td><code>1.87 ms</code></td>
+            <td style="color: var(--text-muted);">In-memory token inverted index search</td>
+          </tr>
+          <tr>
+            <td><strong>Metadata Reranker & Dedup</strong></td>
+            <td><code>17.49 ms</code></td>
+            <td style="color: var(--text-muted);">Intent, temporal, sender & bigram reranking</td>
+          </tr>
+          <tr>
+            <td><strong>Context Assembly</strong></td>
+            <td><code>0.10 ms</code></td>
+            <td style="color: var(--text-muted);">Evidence extraction and citation formatting</td>
+          </tr>
+          <tr>
+            <td><strong>Total Retrieval Latency</strong></td>
+            <td><code>51.10 ms</code></td>
+            <td style="color: var(--text-muted);">Measured end-to-end retrieve_with_context</td>
+          </tr>
+          <tr>
+            <td><strong>Gemini Generation Latency</strong></td>
+            <td><code>3480.33 ms</code></td>
+            <td style="color: var(--text-muted);">LLM grounded generation (network API call)</td>
           </tr>
         </tbody>
       </table>
@@ -911,11 +1125,16 @@
   </div>
 
   <script>
-    function switchTab(name) {
-      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-      event.target.classList.add('active');
-      document.getElementById('tab-' + name).classList.add('active');
+    function switchTab(btn, name) {
+      document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+      document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+      if (btn) {
+        btn.classList.add('active');
+      }
+      var target = document.getElementById('tab-' + name);
+      if (target) {
+        target.classList.add('active');
+      }
     }
   </script>
 </body>

@@ -139,16 +139,22 @@ def _entity_score(entities: list[str], candidate: dict) -> float:
 
 def _sender_score(senders: list[str], candidate: dict, fallback_terms: list[str]) -> float:
     """Calculate sender match prioritizing explicit sender query constraints."""
-    sender_name = candidate.get("sender_name", "")
-    sender_email = candidate.get("sender_email", "")
+    sender_name = candidate.get("sender_name", "").strip()
+    sender_email = candidate.get("sender_email", "").strip()
     sender_text = f"{sender_name} {sender_email}".lower()
 
     if senders:
         best_score = 0.0
         for snd in senders:
-            snd_lower = snd.lower()
-            if snd_lower in sender_text:
+            snd_lower = snd.lower().strip()
+            # 1. Exact normalized email address match
+            if sender_email and snd_lower == sender_email.lower():
                 best_score = max(best_score, 1.0)
+            elif sender_email and snd_lower in sender_email.lower():
+                best_score = max(best_score, 0.95)
+            # 2. Verified sender display name match
+            elif sender_name and (snd_lower in sender_name.lower() or sender_name.lower() in snd_lower):
+                best_score = max(best_score, 0.90)
             else:
                 snd_tokens = tokenize(snd)
                 if snd_tokens:
@@ -156,6 +162,11 @@ def _sender_score(senders: list[str], candidate: dict, fallback_terms: list[str]
                     token_score = matched / len(snd_tokens)
                     if token_score > 0.5:
                         best_score = max(best_score, 0.85 * token_score)
+                    else:
+                        # 3. Weak body-text match as supporting evidence only (never primary match)
+                        body_text = f"{candidate.get('body_snippet', '')} {candidate.get('text', '')}".lower()
+                        if snd_lower in body_text:
+                            best_score = max(best_score, 0.15)
         return best_score
 
     return _lexical_score(fallback_terms, sender_text)
@@ -214,6 +225,36 @@ def _base_score(candidate: dict, analysis: QueryAnalysis) -> dict:
     venue = _venue_score(analysis.venues, candidate)
     date_constraint = _date_constraint_score(analysis.date_tokens, candidate, semantic)
 
+    # Subject bigram match bonus (only for candidates not violating explicit date constraints)
+    subj_lower = candidate.get("subject", "").lower()
+    q_terms = [t.lower() for t in (analysis.subject_terms or analysis.terms)]
+    bigram_bonus = 0.0
+    if date_constraint >= 0.0 and len(q_terms) >= 2:
+        for idx in range(len(q_terms) - 1):
+            bigram = f"{q_terms[idx]} {q_terms[idx+1]}"
+            if bigram in subj_lower:
+                bigram_bonus = 0.08
+                break
+
+    parsed_date = parse_email_date(candidate.get("date"))
+    month_year_bonus = 0.0
+    if analysis.date_tokens and parsed_date:
+        for dt in analysis.date_tokens:
+            parts = dt.lower().split()
+            if len(parts) == 2:
+                month_name, year_str = parts
+                month_map = {
+                    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+                    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
+                    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+                }
+                if month_name in month_map and str(parsed_date.year) == year_str:
+                    if parsed_date.month == month_map[month_name]:
+                        month_year_bonus = 0.12
+                        break
+                    else:
+                        month_year_bonus = -0.05
+
     base = (
         semantic * settings.RERANK_SEMANTIC_WEIGHT
         + subject * settings.RERANK_SUBJECT_WEIGHT
@@ -222,6 +263,8 @@ def _base_score(candidate: dict, analysis: QueryAnalysis) -> dict:
         + entity * settings.RERANK_ENTITY_WEIGHT
         + (venue * 0.10 if analysis.venues else 0.0)
         + date_constraint
+        + bigram_bonus
+        + month_year_bonus
     )
 
     return {
@@ -235,7 +278,7 @@ def _base_score(candidate: dict, analysis: QueryAnalysis) -> dict:
         "temporal_score": 0.0,
         "base_score": base,
         "final_score": base,
-        "parsed_date": parse_email_date(candidate.get("date")),
+        "parsed_date": parsed_date,
     }
 
 
@@ -331,6 +374,21 @@ def rerank_candidates(
             scored["final_score"] = scored["base_score"] + (
                 temporal * settings.RERANK_TEMPORAL_WEIGHT
             )
+    else:
+        # Subtle freshness prior for general queries with dated candidates
+        dated = [(item["message_id"], item.get("parsed_date")) for item in scored_emails if item.get("parsed_date")]
+        if dated:
+            min_ts = min(d.timestamp() for _, d in dated)
+            max_ts = max(d.timestamp() for _, d in dated)
+            span = max(max_ts - min_ts, 1.0)
+            for scored in scored_emails:
+                pd = scored.get("parsed_date")
+                # Do not apply recency boost to candidates that violated explicit date constraints
+                if pd and scored.get("date_constraint", 0.0) >= 0.0:
+                    recency = (pd.timestamp() - min_ts) / span
+                    scored["final_score"] = scored["base_score"] + (
+                        recency * settings.RERANK_FRESHNESS_WEIGHT
+                    )
 
     ranked = sorted(
         scored_emails,

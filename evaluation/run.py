@@ -147,14 +147,16 @@ def main() -> int:
 
         imp = retrieval_data["improved_metrics"]
         leg = retrieval_data["legacy_metrics"]
+        neg_n = imp['negative_queries']
+        imp_fp = round(imp['negative_fp_rate'] * neg_n) if neg_n > 0 else 0
+        leg_fp = round(leg['negative_fp_rate'] * neg_n) if neg_n > 0 else 0
         print("\n--- Retrieval Summary ---")
-        print(f"  Eligible Queries: {imp['eligible_queries']} | Negative Queries: {imp['negative_queries']}")
+        print(f"  Eligible Queries: {imp['eligible_queries']} | Negative Queries: {neg_n}")
+        print(f"  Recall@5:     Improved = {imp['recall_at_5']:.2%}  |  Legacy = {leg['recall_at_5']:.2%}")
         print(f"  Recall@10:    Improved = {imp['recall_at_10']:.2%}  |  Legacy = {leg['recall_at_10']:.2%}")
-        print(f"  Precision@5:  Improved = {imp['precision_at_5']:.2%}  |  Legacy = {leg['precision_at_5']:.2%}")
-        print(f"  nDCG@10:      Improved = {imp['ndcg_at_10']:.2%}  |  Legacy = {leg['ndcg_at_10']:.2%}")
-        print(f"  MRR:          Improved = {imp['mrr']:.2%}  |  Legacy = {leg['mrr']:.2%}")
+        print(f"  Recall@20:    Improved = {imp['recall_at_20']:.2%}  |  Legacy = {leg['recall_at_20']:.2%}")
         print(f"  Success@10:   Improved = {imp['success_at_10']:.2%}  |  Legacy = {leg['success_at_10']:.2%}")
-        print(f"  Negative FP:  Improved = {imp['negative_fp_rate']:.2%}  |  Legacy = {leg['negative_fp_rate']:.2%}")
+        print(f"  Negative FP:  Improved = {imp_fp}/{neg_n} ({imp['negative_fp_rate']:.2%})  |  Legacy = {leg_fp}/{neg_n} ({leg['negative_fp_rate']:.2%})")
 
     # 3. RAG Answer Evaluation
     if do_rag:
@@ -200,8 +202,10 @@ def main() -> int:
         print(f"  Checks: {reliability_data.passed_checks}/{reliability_data.total_checks} passed")
         lats = reliability_data.latencies
         print(f"  Embedding Latency:  {lats.get('query_embedding_ms', 0):.2f} ms")
-        print(f"  FAISS Search:       {lats.get('faiss_search_ms', 0):.2f} ms")
-        print(f"  Metadata Rerank:    {lats.get('reranking_ms', 0):.2f} ms")
+        print(f"  FAISS Dense Search: {lats.get('faiss_dense_search_ms', lats.get('faiss_search_ms', 0)):.2f} ms")
+        print(f"  BM25 Lexical Search:{lats.get('bm25_lexical_search_ms', 0):.2f} ms")
+        print(f"  Metadata Rerank:    {lats.get('reranking_and_dedup_ms', lats.get('reranking_ms', 0)):.2f} ms")
+        print(f"  Context Assembly:   {lats.get('context_construction_ms', 0):.2f} ms")
         print(f"  Total Retrieval:    {lats.get('retrieval_total_ms', 0):.2f} ms")
         print(f"  Gemini Gen Latency: {lats.get('generation_ms', 0):.2f} ms")
 

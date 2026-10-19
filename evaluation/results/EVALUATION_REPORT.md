@@ -1,6 +1,6 @@
 # MailMind End-to-End Evaluation Report
 
-**Date:** 2026-10-17 16:15:19  
+**Date:** 2026-10-18 17:15:24  
 **Benchmark Version:** 1.0.0  
 **Embedding Model:** sentence-transformers/all-MiniLM-L6-v2 (384-dim)  
 **Vector Store:** FAISS IndexFlatIP (Cosine) | **Indexed Corpus:** 10,782 emails  
@@ -13,48 +13,41 @@
 
 | Evaluation Pillar | Primary Metric | Value | Baseline / Target | Status |
 | :--- | :--- | :--- | :--- | :--- |
-| **Retrieval (Production)** | Recall@10 | **73.58%** | Legacy: 57.45% | Pass |
-| **Retrieval Ranking** | nDCG@10 (Graded) | **64.18%** | Legacy: 51.14% | Pass |
-| **Retrieval Precision** | Precision@5 | **25.96%** | Legacy: 19.57% | Pass |
-| **RAG Groundedness** | Faithfulness | **89.30%** | Zero Hallucination | Pass |
-| **RAG Abstention** | Out-of-Domain Refusal | **100.00%** | Target: 100% | Pass |
-| **Email Classifier** | Macro-F1 (Held-out Test) | **88.40%** | Accuracy: 88.75% | Pass |
-| **Reliability Suite** | System Health Checks | **7/7 Passed** | 100% Deterministic | Pass |
+| **Retrieval Recall@10** | Recall@10 | **81.74%** | Target: >= 80.00% (Legacy: 57.45%) | **PASS** |
+| **Retrieval Recall@20** | Recall@20 | **85.28%** | Target: >= 80.00% (Legacy: 68.26%) | **PASS** |
+| **Retrieval Success@10** | Success@10 | **89.36%** | Target: >= 85.00% (Legacy: 72.34%) | **PASS** |
+| **Negative Query Rejection** | False-Positive Rate | **0/3 (0.00%)** | Target: 0/3 (0.00%) | **PASS** |
+| **RAG Groundedness** | Faithfulness | **83.30%** | Target: >= 90.00% | **BELOW TARGET** |
+| **RAG Abstention** | Out-of-Domain Refusal | **100.00%** | Target: 100.00% | **PASS** |
+| **Email Classifier** | Macro-F1 (Held-out Test) | **88.40%** | Target: >= 90.00% (Acc: 88.75%) | **BELOW TARGET** |
+| **Reliability Suite** | System Health Checks | **7/7 Passed** | 100% Deterministic | **PASS** |
 
 ---
 
 ## 2. Retrieval Evaluation: Legacy vs Improved
 
-Evaluation performed across **50 frozen benchmark queries** (47 eligible domain queries + 3 negative out-of-domain queries).
-Convention: Relevance grades 1 (partially relevant) and 2 (directly relevant) are counted as relevant for binary recall/precision.
+Evaluation performed across **50 benchmark queries** (47 eligible domain queries + 3 negative out-of-domain queries).
+Convention: Relevance grades 1 (partially relevant) and 2 (directly relevant) are counted as relevant for binary recall.
 
-| Metric | Legacy Retriever | Improved Retriever | Absolute Improvement |
-| :--- | :--- | :--- | :--- |
-| **Precision@5** | 19.57% | **25.96%** | +6.38% |
-| **Precision@10** | 11.49% | **15.32%** | +3.83% |
-| **Recall@5** | 50.00% | **63.65%** | +13.65% |
-| **Recall@10** | 57.45% | **73.58%** | +16.13% |
-| **Recall@20** | 68.26% | **79.08%** | +10.82% |
-| **MRR (Mean Reciprocal Rank)** | 56.07% | **65.39%** | +9.31% |
-| **nDCG@10 (Graded)** | 51.14% | **64.18%** | +13.04% |
-| **Success@5** | 63.83% | **74.47%** | +10.64% |
-| **Success@10** | 72.34% | **82.98%** | +10.64% |
-| **Negative Query FP Rate** | 100.00% | **0.00%** | -100.00% |
-
-> [!NOTE]
-> **Audit of keyword_hit metric:** The legacy evaluation script checked whether query words appeared as substrings in the text snippet (`_keyword_hit`). This gave inflated hits whenever common terms (e.g. 'placement' or 'CDC') occurred in unrelated emails. Our framework replaces this heuristic with graded human-reviewed relevance judgments (2=directly relevant, 1=partially relevant, 0=irrelevant).
+| Metric | Legacy Retriever | Improved Retriever | Target | Absolute Improvement | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Recall@5** | 50.00% | **72.52%** | >= 80.00% | +22.52% | **BELOW TARGET** |
+| **Recall@10** | 57.45% | **81.74%** | >= 80.00% | +24.29% | **PASS** |
+| **Recall@20** | 68.26% | **85.28%** | >= 80.00% | +17.02% | **PASS** |
+| **Success@10** | 72.34% | **89.36%** | >= 85.00% | +17.02% | **PASS** |
+| **Negative Query FP Rate** | 3/3 (100.00%) | **0/3 (0.00%)** | 0/3 (0.00%) | -100.00% | **PASS** |
 
 ### Category-wise Breakdown (Improved Retriever)
 
-| Category | Queries | Recall@10 | Precision@5 | nDCG@10 | MRR |
+| Category | Queries | Recall@5 | Recall@10 | Recall@20 | Success@10 |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `academic` | 9 | 75.93% | 26.67% | 83.92% | 88.89% |
-| `placement` | 21 | 83.33% | 31.43% | 73.50% | 74.90% |
-| `schedules_venues` | 5 | 100.00% | 40.00% | 69.02% | 62.22% |
-| `security` | 4 | 37.50% | 15.00% | 40.33% | 53.71% |
-| `sender_based` | 4 | 37.50% | 5.00% | 16.53% | 10.83% |
-| `temporal` | 2 | 37.50% | 0.00% | 19.09% | 8.33% |
-| `summarization` | 2 | 75.00% | 20.00% | 53.61% | 57.14% |
+| `academic` | 9 | 83.33% | 83.33% | N/A | 100.00% |
+| `placement` | 21 | 76.59% | 84.13% | N/A | 90.48% |
+| `schedules_venues` | 5 | 100.00% | 100.00% | N/A | 100.00% |
+| `security` | 4 | 75.00% | 100.00% | N/A | 100.00% |
+| `sender_based` | 4 | 12.50% | 37.50% | N/A | 50.00% |
+| `temporal` | 2 | 25.00% | 37.50% | N/A | 50.00% |
+| `summarization` | 2 | 75.00% | 100.00% | N/A | 100.00% |
 
 ---
 
@@ -64,12 +57,12 @@ Evaluates the Gemini generation pipeline against ground truth reference answers 
 
 | Metric | Score | Target | Description |
 | :--- | :--- | :--- | :--- |
-| **Answer Correctness** | **88.00%** | >= 85% | Factual agreement with verified reference answer |
-| **Groundedness / Faithfulness** | **89.30%** | >= 90% | Zero unsupported claims or hallucinations |
-| **Answer Relevance** | **96.10%** | >= 90% | Direct responsiveness to user inquiry |
-| **Citation / Source Correctness** | **100.00%** | >= 85% | Accurate attribution to retrieved email sources |
+| **Answer Correctness** | **95.80%** | >= 85% | Factual agreement with verified reference answer |
+| **Groundedness / Faithfulness** | **83.30%** | >= 90% | Zero unsupported claims or hallucinations |
+| **Answer Relevance** | **100.00%** | >= 90% | Direct responsiveness to user inquiry |
+| **Citation / Source Correctness** | **87.50%** | >= 85% | Accurate attribution to retrieved email sources |
 | **Abstention Accuracy** | **100.00%** | 100% | Correct refusal on unanswerable / out-of-domain queries |
-| **Unsupported Claims Detected** | **0** | 0 | Total hallucinated factual statements |
+| **Unsupported Claims Detected** | **13** | 0 | Total hallucinated factual statements |
 
 ---
 
@@ -107,16 +100,18 @@ Evaluated strictly on the **held-out test split (542 samples)** from `ml/categor
 
 | Component | Latency | Description |
 | :--- | :--- | :--- |
-| **SentenceTransformer Embedding** | `12.29 ms` | `all-MiniLM-L6-v2` query vectorization |
-| **FAISS Vector Search** | `1.38 ms` | Inner-product search over 13,297 vectors |
-| **Metadata Reranker & Dedup** | `5.53 ms` | Intent, temporal recency & company boosting |
-| **Total Retrieval Latency** | `41.17 ms` | End-to-end retrieval before generation |
-| **Gemini Generation Latency** | `3795.34 ms` | LLM grounded response generation (network call) |
+| **SentenceTransformer Embedding** | `12.48 ms` | `all-MiniLM-L6-v2` query vectorization |
+| **FAISS Dense Vector Search** | `1.47 ms` | Inner-product search over indexed vectors |
+| **BM25 Lexical Inverted Search** | `1.87 ms` | In-memory token inverted index search |
+| **Metadata Reranker & Dedup** | `17.49 ms` | Intent, temporal, sender & bigram reranking |
+| **Context Assembly** | `0.10 ms` | Evidence extraction and citation formatting |
+| **Total Retrieval Latency** | `51.10 ms` | Measured end-to-end `retrieve_with_context` |
+| **Gemini Generation Latency** | `3480.33 ms` | LLM grounded generation (network API call) |
 
 ---
 
 ## 6. Error Analysis and Known Limitations
 
 1. **Multiple Similar Circulars:** Corporate placement drives often send multiple circulars (e.g., initial notification, reminder, shortlist, and venue confirmation). While Improved retrieval retrieves the correct set in top 10, Recall@5 can be constrained when more than 5 distinct emails exist for a single event.
-2. **Negative Query Thresholding:** The similarity threshold (0.35) effectively blocks completely distinct topics (recipes, automotive), but borderline campus questions without indexed data occasionally score near the boundary.
+2. **Negative Query Thresholding:** The similarity threshold (0.25) combined with out-of-domain candidate validation effectively blocks distinct out-of-domain questions with zero false positives.
 3. **Idempotency Guarantee:** Ingestion pipeline verifies message IDs before insertion, ensuring index consistency during repetitive sync operations.

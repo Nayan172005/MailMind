@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass, asdict
 from typing import Dict, List, Optional, Any
 
@@ -305,6 +306,8 @@ def run_rag_evaluation(
                 eval_res = deterministic_evaluate_answer(q, answer, context, search_results)
 
             results.append(eval_res)
+            if use_llm_judge and settings.GEMINI_API_KEY:
+                time.sleep(2.0)
         except Exception as e:
             logger.error(f"Error during RAG evaluation for query {q.id}: {e}")
             results.append(
