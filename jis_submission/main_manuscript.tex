@@ -1,0 +1,673 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{tabularx}
+\usepackage{url}
+\usepackage{cite}
+\usepackage{setspace}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+\title{\textbf{MailMind: A Hybrid Retrieval-Augmented Generation Framework for Real-Time Email Search and Evidence-Grounded Summarization}}
+
+\author{
+    \textbf{Nayan Sharma}\textsuperscript{1}, 
+    \textbf{Nabhan Belim}\textsuperscript{1}, 
+    \textbf{Amil Mahajan}\textsuperscript{1} \\
+    \small \textsuperscript{1}Department of Computer Science and Engineering, Vellore Institute of Technology (VIT), Vellore, India \\
+    \small \textit{Corresponding author:} [Author to complete email address and contact details]
+}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Personal email collections represent a complex domain for information retrieval, characterized by fragmented multi-message event threads, specialized alphanumeric identifiers, strict temporal sensitivity, and continuous real-time message streams. While general-purpose Retrieval-Augmented Generation (RAG) frameworks have advanced open-domain question answering, applying them to personal email requires reconciling semantic paraphrase understanding with exact entity recall, preventing redundant context flooding from fragmented circulars, enforcing strict evidence grounding to prevent critical real-world hallucinations, and maintaining retrieval freshness during live ingestion. In this paper, we present \textbf{MailMind}, an integrated hybrid RAG framework engineered for personal email search and evidence-grounded summarization. MailMind combines dense semantic embeddings (384-dimensional \texttt{all-MiniLM-L6-v2} vectors in FAISS) with an in-memory lexical BM25 inverted index through Reciprocal Rank Fusion ($k_{\text{rrf}}=60$). A second-stage multi-signal reranker evaluates semantic similarity, subject overlap, body match, sender authority, entity alignment, and temporal recency decay while deduplicating candidate chunks by message identifier. Grounded synthesis is orchestrated via Google Gemini 3.5 Flash-Lite under strict evidence-bounding prompts, coupled with similarity thresholding ($0.25$) that enforces deterministic zero-call abstention on unsupported out-of-domain queries. To handle dynamic inbox updates, MailMind implements a sub-millisecond file-signature check and reentrant locking that invalidates stale retrieval state and rebuilds BM25 indexes without application restarts. We evaluate MailMind using an independently constructed frozen benchmark of 50 queries across 8 categories over an indexed corpus of 10,782 emails (13,297 vectors). On the full benchmark, hybrid retrieval achieves Recall@10 of 81.74\% (legacy dense: 57.45\%), Recall@20 of 85.28\% (legacy: 68.26\%), and Success@10 of 89.36\% (legacy: 72.34\%), with a 0.0\% false-positive rate on negative queries. On the frozen test split (36 queries), Recall@10 reaches 79.17\% and Recall@20 reaches 82.60\%. Evaluated via structured LLM judging across 18 representative queries, RAG answer correctness is 95.80\%, citation correctness is 87.50\%, and out-of-domain abstention is 100.0\%, while groundedness achieves 83.30\% (revealing 13 unsupported statements, primarily from boilerplate placement guidelines and context truncation). An auxiliary BiLSTM email classifier achieves 88.75\% accuracy and 88.40\% macro-F1 across 542 held-out samples. End-to-end CPU retrieval executes in 51.10~ms. We transparently report remaining bottlenecks, including Recall@5 (72.52\%) constrained by multi-circular dispersion and lower performance on temporal and sender-based queries, offering an honest, reproducible foundation for personal email access.
+\end{abstract}
+
+\textbf{Keywords:} Email information retrieval; hybrid retrieval; retrieval-augmented generation; email summarization; evidence-grounded question answering; personal information management.
+
+\newpage
+
+\section{Introduction}
+
+\subsection{Background and Motivation}
+Electronic mail remains the foundational communication and coordination infrastructure for professional, academic, and administrative organizations worldwide. Rather than functioning solely as an asynchronous messaging medium, personal email inboxes serve as unstructured, ad-hoc personal knowledge repositories \cite{dumais2003stuff, bendersky2020search, ayalon2025mediation}. In academic and institutional settings, students and professionals routinely receive dozens of institutional circulars daily concerning placement drives, examination schedules, venue allocations, fee deadlines, and administrative notices. Because these communications arrive continuously and semi-structuredly from multiple institutional senders, critical information becomes rapidly buried beneath high-volume administrative traffic.
+
+When users attempt to recover specific actionable information (e.g., \textit{``What is the eligibility cutoff and registration deadline for the upcoming Microsoft placement drive?''}), traditional email search interfaces force users to guess exact keyword tokens, navigate chronological message threads, and cross-reference multiple disjoint circulars \cite{kuzi2017query, bendersky2017learning}. In response, conversational question-answering powered by Large Language Models (LLMs) and Retrieval-Augmented Generation (RAG) \cite{lewis2020retrieval, gao2023rag_survey} has emerged as an attractive paradigm for natural-language personal information access. By retrieving relevant passages from an external corpus and conditioning an LLM to synthesize concise, grounded responses, RAG systems offer direct answers backed by source citations.
+
+\subsection{Challenges in Personal Email Retrieval}
+Despite recent advancements in open-domain RAG, personal email information retrieval introduces structural and operational challenges that cannot be resolved through generic off-the-shelf vector pipelines:
+\begin{enumerate}
+    \item \textbf{The Semantic-Lexical Tension:} Email queries often combine high-level semantic intent with rigid alphanumeric identifiers. For instance, a query such as \textit{``When is the venue confirmation for CSE3002 CAT-II exam?''} requires matching the exact course code (\texttt{CSE3002}) and exam identifier (\texttt{CAT-II}) alongside semantically phrased intents regarding room schedules. Pure dense retrieval models frequently suffer from catastrophic vocabulary mismatch on short alphanumeric tokens and company names, whereas pure lexical retrieval (such as BM25) fails when users ask conceptually paraphrased questions \cite{karpukhin2020dense, robertson2009probabilistic}.
+    \item \textbf{Multi-Message Redundancy and Fragmentation:} Important corporate placement drives and university events rarely occur within a single isolated email. Instead, an event unfolds across an initial invitation, registration reminders, candidate shortlists, venue announcements, and schedule revisions. Naive chunk-level vector retrieval retrieves multiple redundant chunks from the same circular or obsolete historical announcements, displacing recent, authoritative updates from the limited LLM context window \cite{zhang2021emailsum}.
+    \item \textbf{Strict Faithfulness and the High Cost of Hallucination:} In open-domain web search, minor conversational embellishment may be tolerated. In personal email retrieval, hallucinating an interview time, eligibility criteria, or venue allocation carries severe real-world academic and professional penalties. RAG systems for email must guarantee strict factual fidelity to the retrieved evidence, provide verifiable source attribution, and abstain decisively when requested information is absent \cite{gao2023enabling, min2023factscore, ji2023survey, chen2024controlling}.
+    \item \textbf{Dynamic Retrieval Freshness under Streaming Ingestion:} Unlike static benchmark corpora, email collections are continuously growing. Ingestion via Gmail APIs or push webhooks introduces new messages asynchronously. Existing research prototypes typically load static indexes into memory upon application launch; consequently, newly ingested emails remain unqueryable unless the entire application process is manually restarted or expensive full index rebuilds are triggered \cite{busch2012earlybird, zhang2023incremental}.
+\end{enumerate}
+
+\subsection{Research Objectives and Questions}
+To address these challenges, this study designs, implements, and empirically evaluates \textbf{MailMind}, an integrated hybrid RAG framework tailored specifically for personal email collections. We organize our empirical investigation around four central research questions:
+\begin{itemize}
+    \item[\textbf{RQ1:}] \textit{How does a hybrid retrieval architecture combining dense FAISS search, lexical BM25 retrieval, and multi-signal metadata reranking compare against baseline dense retrieval across varying recall depths (Recall@5, Recall@10, Recall@20) and query categories?}
+    \item[\textbf{RQ2:}] \textit{To what degree can prompt engineering, evidence-focused context assembly, and similarity thresholding enforce factual groundedness, citation validity, and out-of-domain abstention in personal email question answering?}
+    \item[\textbf{RQ3:}] \textit{Can lightweight auxiliary deep-learning models (specifically a BiLSTM classifier) reliably categorize incoming email streams into priority classes without interfering with retrieval latency?}
+    \item[\textbf{RQ4:}] \textit{How can streaming push ingestion and real-time retrieval freshness be maintained efficiently in local client-server architectures without requiring full index rebuilds or compromising query thread safety?}
+\end{itemize}
+
+\subsection{Contributions of this Work}
+The primary contributions of this paper are practical, architectural, and empirical:
+\begin{enumerate}
+    \item \textbf{Integrated Hybrid Retrieval Pipeline:} We implement a multi-stage retrieval architecture integrating 384-dimensional dense vectors (\texttt{all-MiniLM-L6-v2}) in FAISS with an in-memory BM25 inverted index via Reciprocal Rank Fusion ($k_{\text{rrf}}=60$). A second-stage reranker combines semantic similarity, subject overlap, body match, sender authority, entity alignment, and temporal recency decay while deduplicating chunks by message ID.
+    \item \textbf{Evidence-Grounded Synthesis and Safe Abstention:} We design an evidence-bounding prompting and context assembly mechanism using Gemini 3.5 Flash-Lite, backed by similarity thresholding ($0.25$) that abstains deterministically on unanswerable or out-of-domain queries without incurring LLM API costs.
+    \item \textbf{Thread-Safe Real-Time Freshness:} We introduce a microsecond file-signature change detection mechanism (`reload\_if\_changed`) that dynamically synchronizes in-memory FAISS indexes and invalidates BM25 caches during real-time Gmail Pub/Sub webhook ingestion without restarting user-facing interfaces.
+    \item \textbf{Rigorous Multi-Pillar Empirical Benchmark:} We construct a frozen 50-query evaluation benchmark across 8 realistic categories (placement, academic, schedules/venues, security, sender-based, temporal, summarization, and out-of-domain negative queries) evaluated on an indexed corpus of 10,782 emails. We report granular retrieval metrics across development and test splits, LLM-as-a-judge answer quality, classifier performance, and latency profiles, openly disclosing below-target results and methodological trade-offs.
+\end{enumerate}
+
+\subsection{Organization of the Paper}
+The remainder of this article is structured as follows: Section 2 reviews related literature in personal information management, hybrid retrieval, RAG, and citation evaluation. Section 3 details the system architecture, mathematical formulations, and engineering mechanisms of MailMind. Section 4 presents the experimental setup, benchmark construction, and evaluation protocols. Section 5 reports empirical findings across retrieval, generation, classification, and latency. Section 6 discusses the findings and practical trade-offs. Section 7 presents limitations and threats to validity, and Section 8 concludes with future research directions.
+
+---
+
+\section{Related Work}
+
+\subsection{Personal Information Management and Email Retrieval}
+Personal Information Management (PIM) and personal email search differ fundamentally from web search \cite{dumais2003stuff, bendersky2020search}. In web search, high query volume and aggregate user click logs enable sophisticated collaborative ranking and popularity models. In contrast, personal search operates over private, fragmented, heterogeneous document collections where user interaction logs are sparse, highly biased, and subject to strict privacy constraints \cite{wang2016learning, bendersky2017learning, bendersky2020search}. Early foundational systems, such as Dumais et al.'s \textit{Stuff I've Seen} \cite{dumais2003stuff}, highlighted that personal retrieval heavily relies on contextual episodic cues, such as sender identity, temporal milestones, and subject headers. In their comprehensive monograph, Bendersky et al. \cite{bendersky2020search} established that personal email search requires specialized ranking architectures that combine multi-field lexical signals with personal context.
+
+Subsequent work by Kuzi et al. \cite{kuzi2017query} demonstrated that email search is severely hampered by vocabulary mismatch, where user query vocabulary diverges from formal administrative jargon used in circulars. While pseudo-relevance feedback and query expansion alleviate some lexical gaps, they introduce query drift when email threads discuss evolving topics. More recently, Ayalon \cite{ayalon2025mediation} examined how modern organizational email volume induces acute information overload, demonstrating the urgent need for automated synthesis and priority filtering rather than simple list-based document search.
+
+\subsection{Semantic and Lexical Retrieval Methods}
+Information retrieval has traditionally relied on statistical term-matching functions, most notably BM25 \cite{robertson2009probabilistic}, which estimates document relevance using term frequency, document frequency, and document length normalization. BM25 exhibits exceptional efficiency and exact-match precision, especially for rare tokens, codes, and acronyms. However, it cannot capture synonymy or semantic paraphrasing.
+
+With the emergence of dense representation learning, Dense Passage Retrieval (DPR) \cite{karpukhin2020dense} and Siamese sentence transformers like Sentence-BERT \cite{reimers2019sentence} mapped queries and documents into continuous dense embedding spaces. These dense models represent semantic meaning effectively, allowing vector similarity search (e.g., using FAISS \cite{johnson2021billion}) to retrieve conceptually related documents even when no literal word overlap exists. Nonetheless, extensive empirical studies (e.g., Luan et al. \cite{luan2021sparse}) confirm that dense models suffer from catastrophic degradation on domain-specific identifiers, numeric dates, and rare proper nouns, establishing that neither dense nor lexical retrieval is independently sufficient.
+
+\subsection{Hybrid Retrieval and Rank Fusion}
+To combine the complementary strengths of lexical and dense representations, hybrid retrieval architectures have become standard practice \cite{luan2021sparse, formal2021splade, yang2024cluster}. Two primary hybridization strategies exist: score-level interpolation and rank-level fusion. Score-level fusion requires calibrating unnormalized BM25 scores (which range from 0 to unbounded positive reals) against inner-product cosine similarities (which range from $-1$ to $+1$), a process highly sensitive to corpus statistics and hyper-parameter shifts.
+
+In contrast, Cormack, Clarke, and Büttcher \cite{cormack2009reciprocal} introduced Reciprocal Rank Fusion (RRF), an unsupervised, robust technique that merges multiple ranked lists based purely on reciprocal rank positions. Cormack et al. proved that RRF consistently outperforms Condorcet and individual learning-to-rank methods without requiring cross-corpus score calibration. Recent work by Yang et al. \cite{yang2024cluster} further demonstrates that partial dense retrieval fused with sparse inverted index retrieval delivers superior retrieval robustness on resource-constrained platforms. In modern multi-stage IR pipelines, hybrid first-stage retrieval is typically succeeded by neural cross-encoders or feature-based rerankers \cite{nogueira2019passage, khattab2020colbert}. While transformer cross-encoders (such as MonoBERT \cite{nogueira2019passage}) achieve exceptional reranking precision, their substantial inference latency (often 100--500~ms per query) renders them computationally prohibitive on standard CPU-based client environments. MailMind bridges this gap by coupling RRF with a lightweight, multi-signal feature reranker that evaluates semantic, structural, and temporal features in under 20~ms.
+
+\subsection{Retrieval-Augmented Generation and Grounded Question Answering}
+Retrieval-Augmented Generation, introduced by Lewis et al. \cite{lewis2020retrieval}, couples parametric memory (pre-trained language models) with non-parametric memory (external index retrieval). In a standard RAG pipeline, the retriever fetches candidate passages relevant to a query, and the generator conditions on both the query and the retrieved context to synthesize an answer. Comprehensive surveys by Gao et al. \cite{gao2023rag_survey} classify modern RAG into Naive, Advanced, and Modular paradigms, highlighting that robust RAG requires pre-retrieval query routing, post-retrieval context compression, and evidence filtering.
+
+In personal email access, generation must be strictly factual. Asai et al. \cite{asai2024self_rag} introduced Self-RAG, demonstrating that dynamic retrieval tokens and self-critique mechanisms significantly reduce factual errors. However, self-reflective fine-tuning requires proprietary model retraining. For practical client-server deployments utilizing commercial frontier models (e.g., Google Gemini or OpenAI GPT-4), prompt-based evidence constraints, structured citation tagging, and context truncation remain the primary engineering mechanisms for grounded synthesis.
+
+\subsection{RAG Evaluation, Hallucination, and Abstention}
+The evaluation of RAG systems represents an active research frontier. Traditional n-gram overlap metrics (BLEU, ROUGE) correlate poorly with human factual judgments in conversational QA. Consequently, modern RAG evaluation relies on multi-dimensional rubrics evaluating answer correctness, faithfulness/groundedness, context relevance, and source attribution \cite{es2024ragas, saad2024ares}. Gao et al. \cite{gao2023enabling} introduced the ALCE benchmark, emphasizing that citation precision and recall are vital to user trust. Qi et al. \cite{qi2024model} investigated model internals-based attribution to verify whether generated answers faithfully reflect retrieved evidence. Min et al. \cite{min2023factscore} proposed FActScore, demonstrating that long-form generated responses frequently interleave supported factual statements with subtle, ungrounded extrapolations.
+
+Ji et al. \cite{ji2023survey} categorized hallucinations into intrinsic contradictions (direct conflict with retrieved evidence) and extrinsic fabrications (unverifiable statements). In personal email search, extrinsic hallucinations (e.g., inventing a deadline when none is stated) represent critical failure modes. Recent work by Chen et al. \cite{chen2024controlling} formalizes risk-controlled RAG, proving that systems must incorporate principled abstention mechanisms. Furthermore, while the ``LLM-as-a-Judge'' paradigm \cite{zheng2023judging} provides scalable automated scoring, it introduces potential position, verbosity, and self-enhancement biases, necessitating deterministic rule-based checks and manual sample verification.
+
+\subsection{Research Gap and Positioning of MailMind}
+Table~\ref{tab:related_work} synthesizes representative related literature and illustrates the specific research positioning of MailMind. While prior studies have addressed isolated sub-problems—such as document ranking in personal search logs \cite{bendersky2017learning, bendersky2020search}, hybrid sparse-dense rank fusion on static web benchmarks \cite{cormack2009reciprocal, yang2024cluster}, abstractive email thread summarization \cite{zhang2021emailsum}, and citation attribution in open-domain QA \cite{gao2023enabling, qi2024model}—there remains an empirical gap in evaluating integrated, client-deployable hybrid RAG architectures operating over semi-structured, continuously streaming personal academic and placement email collections. Specifically, the literature lacks empirical investigations that simultaneously evaluate: (i) hybrid dense-lexical fusion and multi-circular deduplication, (ii) strict evidence-grounded generation with deterministic abstention, (iii) real-time retrieval freshness under streaming webhook ingestion, and (iv) dual-mode evaluation separating development from frozen test splits across realistic domain categories. MailMind is designed to address this comprehensive operational gap.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Comparison of related literature and research positioning of MailMind.}
+\label{tab:related_work}
+\begin{tabularx}{\textwidth}{l p{3.2cm} p{4.0cm} p{4.5cm}}
+\toprule
+\textbf{Research Area} & \textbf{Representative Work} & \textbf{Core Focus / Contribution} & \textbf{Limitation / MailMind Positioning} \\
+\midrule
+Personal Email IR & Dumais et al. \cite{dumais2003stuff}; Bendersky et al. \cite{bendersky2017learning, bendersky2020search} & Search logs, user interaction modeling, personal collection ranking. & Focuses on document ranking; does not synthesize direct answers across circulars; lacks LLM grounding. \\
+Hybrid Retrieval & Cormack et al. \cite{cormack2009reciprocal}; Yang et al. \cite{yang2024cluster} & Reciprocal Rank Fusion; partial dense-sparse fusion on constrained hardware. & Evaluated on static open benchmarks (MS MARCO); lacks personal email metadata features (sender authority, temporal decay). \\
+Neural Reranking & Nogueira \& Cho \cite{nogueira2019passage}; Khattab \& Zaharia \cite{khattab2020colbert} & Heavy cross-encoder scoring (MonoBERT); ColBERT late interaction. & Prohibitive inference latency (100--500~ms); MailMind uses lightweight multi-signal CPU reranking (<20~ms). \\
+RAG & Lewis et al. \cite{lewis2020retrieval}; Gao et al. \cite{gao2023rag_survey}; Asai et al. \cite{asai2024self_rag} & Non-parametric knowledge grounding; modular RAG frameworks. & Assumes static external corpus; lacks real-time ingestion freshness mechanisms and message-level deduplication. \\
+Groundedness & Gao et al. \cite{gao2023enabling}; Qi et al. \cite{qi2024model}; Chen et al. \cite{chen2024controlling} & Citation attribution (ALCE); internal attribution; risk-controlled abstention. & Evaluated on Wikipedia QA; MailMind applies evidence-focused prompting and zero-call similarity thresholding to personal email. \\
+Streaming IR & Busch et al. \cite{busch2012earlybird}; Zhang et al. \cite{zhang2023incremental} & Dynamic inverted segments; streaming vector index maintenance. & Tailored for distributed enterprise infrastructure; MailMind provides atomic signature invalidation for local client apps. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+---
+
+\section{System Design and Methodology}
+
+\subsection{Problem Formulation and Design Objectives}
+Let $\mathcal{C} = \{e_1, e_2, \dots, e_N\}$ denote a personal email collection where each email $e_i$ comprises a unique identifier $m_i$ (\texttt{message\_id}), a subject line $s_i$, a sender name and address $a_i$, a timestamp $t_i$, and a body text $b_i$. In contrast to static document collections, $\mathcal{C}$ is dynamic: new emails arrive sequentially via streaming push notifications.
+
+Given a natural-language user query $q$, the objective of MailMind is threefold:
+\begin{enumerate}
+    \item \textbf{High-Recall Candidate Retrieval:} Retrieve a ranked subset of relevant emails $\mathcal{R}_q \subset \mathcal{C}$ maximizing Recall@$k$ for $k \in \{5, 10, 20\}$, correctly retrieving all relevant circulars while rejecting irrelevant queries.
+    \item \textbf{Faithful Evidence Grounding:} Synthesize an answer $A_q$ conditioned strictly on evidence extracted from $\mathcal{R}_q$, generating accurate source citations and deterministically abstaining when $\mathcal{R}_q = \emptyset$.
+    \item \textbf{Operational Freshness and Efficiency:} Ensure that an incoming email $e_{N+1}$ becomes immediately queryable without restarting user-facing services or incurring high re-indexing latency.
+\end{enumerate}
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/figure1_system_architecture.png}
+\caption{End-to-end MailMind system architecture, illustrating email ingestion, BiLSTM classification, FAISS vector store and BM25 indexing, hybrid retrieval with Reciprocal Rank Fusion, multi-signal metadata reranking, and Gemini grounded generation.}
+\label{fig:architecture}
+\end{figure*}
+
+\subsection{Overall MailMind Architecture}
+Figure~\ref{fig:architecture} illustrates the high-level architecture of MailMind. The system decouples offline/background ingestion from online query processing through a modular pipeline comprising six primary subsystems:
+(1) Gmail OAuth and Pub/Sub Webhook Ingestion, (2) Preprocessing, Normalization, and BiLSTM Classification, (3) Metadata Header Prepending, Chunking, and Embedding, (4) In-Memory FAISS Vector Store and Lexical BM25 Index, (5) Hybrid Reciprocal Rank Fusion and Multi-Signal Reranking, and (6) Evidence-Focused Context Assembly, Grounded Generation, and Dynamic Invalidation.
+
+\subsection{Gmail Integration and Real-Time Ingestion}
+MailMind integrates directly with the Google Gmail API using OAuth 2.0 with Proof Key for Code Exchange (PKCE). To support asynchronous event-driven updates, MailMind establishes a Google Cloud Pub/Sub push subscription. When a new message arrives in the user's Gmail inbox:
+\begin{enumerate}
+    \item Google Pub/Sub sends an HTTPS POST request to MailMind's webhook endpoint (\texttt{POST /gmail/webhook}).
+    \item \textbf{OIDC JWT Verification:} To prevent spoofing and unauthorized data injection, the endpoint validates the Google-signed OpenID Connect (OIDC) JSON Web Token (JWT) supplied in the \texttt{Authorization: Bearer <token>} header. The verification routine confirms the cryptographic signature via Google's public keys, validates token expiration, verifies that the audience matches the configured \texttt{PUBSUB\_VERIFICATION\_AUDIENCE}, and confirms that the email claim matches the expected service account (\texttt{PUBSUB\_SERVICE\_ACCOUNT\_EMAIL}).
+    \item \textbf{Idempotent Synchronization:} The webhook payload contains a base64-encoded history ID. The ingestion watcher retrieves message deltas using the Gmail API, verifies message IDs against MongoDB persistence to avoid duplicate indexing, and forwards novel emails to the pipeline.
+\end{enumerate}
+
+Figure~\ref{fig:ingestion} details the real-time ingestion and dynamic index synchronization flow.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.92\textwidth]{figures/figure2_realtime_ingestion.png}
+\caption{Real-time Gmail Pub/Sub webhook ingestion workflow, illustrating authenticated JWT verification, BiLSTM priority filtering, chunking, FAISS index appending, atomic disk persistence, and signature-based Streamlit cache invalidation.}
+\label{fig:ingestion}
+\end{figure*}
+
+\subsection{Email Preprocessing and Classification}
+Incoming raw emails are parsed by \texttt{rag/normalizer.py}, which removes HTML tags, normalizes whitespace, parses header fields, and standardizes RFC-2822 timestamps into ISO datetime objects.
+
+Before indexing, each email is evaluated by an auxiliary \textbf{Bidirectional Long Short-Term Memory (BiLSTM)} text classifier implemented in Keras 3 / TensorFlow (\texttt{ml/categorization/predict.py}). The classifier categorizes messages into three functional classes:
+\begin{itemize}
+    \item \texttt{spam}: Commercial advertisements, promotional marketing, unsolicited external mass emails.
+    \item \texttt{general}: General university circulars, cultural announcements, non-urgent club notices.
+    \item \texttt{important}: Critical placement notices, examination schedules, fee payment deadlines, security alerts.
+\end{itemize}
+Emails classified as \texttt{spam} are flagged and quarantined from the default RAG retrieval index, preventing commercial noise from corrupting question answering.
+
+\subsection{Embedding Generation and Vector Indexing}
+\subsubsection{Metadata Header Prepending and Chunking}
+Individual emails vary widely in length, from single-sentence acknowledgments to lengthy recruitment policy documents spanning thousands of words. Because SentenceTransformer models enforce a maximum token length (512 tokens), long emails must be segmented. 
+
+However, splitting body text naively causes chunk embeddings to lose vital contextual metadata (e.g., who sent the message, its original subject line, and when it was sent). MailMind solves this via \textbf{Metadata Header Prepending} (\texttt{rag/chunker.py}). For every email $e_i$, a structured metadata header is generated:
+\begin{equation}
+    H(e_i) = \text{``Subject: } s_i \text{\textbackslash nFrom: } a_i \text{\textbackslash nDate: } t_i \text{''}
+\end{equation}
+If the email body contains fewer than 400 words, it forms a single chunk: $c_{i,0} = H(e_i) \circ b_i$. For longer emails, the body is divided into overlapping sliding windows of $W = 400$ words with an overlap of $O = 50$ words. Crucially, the header $H(e_i)$ is prepended to \textit{every} chunk text:
+\begin{equation}
+    c_{i,j} = H(e_i) \circ \text{Window}_j(b_i)
+\end{equation}
+This ensures that subject and sender intent are encoded directly into the vector representation of every chunk.
+
+\subsubsection{Dense Vector Representation}
+Each chunk text $c_{i,j}$ is converted into a 384-dimensional dense semantic embedding using the \texttt{sentence-transformers/all-MiniLM-L6-v2} dual-encoder model:
+\begin{equation}
+    \mathbf{v}_{i,j} = \text{Embed}(c_{i,j}), \quad \mathbf{v}_{i,j} \in \mathbb{R}^{384}
+\end{equation}
+Unit L2 normalization is applied such that $\|\mathbf{v}_{i,j}\|_2 = 1.0$.
+
+\subsubsection{FAISS Vector Store Architecture}
+Dense embeddings are indexed using \texttt{faiss.IndexFlatIP(384)} \cite{johnson2021billion}. Because vectors are unit-normalized, the inner product computed by FAISS is mathematically identical to cosine similarity:
+\begin{equation}
+    \text{Sim}_{\text{dense}}(\mathbf{q}, \mathbf{v}) = \langle \mathbf{q}, \mathbf{v} \rangle = \cos(\theta_{\mathbf{q}, \mathbf{v}})
+\end{equation}
+The vector store maintains an in-memory metadata array mapping FAISS vector row indices to chunk metadata dictionaries. On disk, the store persists two files: \texttt{emails.faiss} (binary index) and \texttt{metadata.json} (JSON serialized metadata).
+
+\subsection{Hybrid Semantic and Lexical Retrieval}
+To overcome the limitations of pure dense vector search on alphanumeric codes, course identifiers, and exact dates, MailMind implements a two-stage hybrid retrieval strategy (\texttt{rag/hybrid\_retriever.py}).
+
+\subsubsection{Lexical Inverted Index (BM25)}
+In parallel with the FAISS index, MailMind maintains an in-memory BM25 inverted index. Document chunk texts are tokenized, converted to lowercase, and filtered against English stopwords. For an analyzed query term set $T_q$, the BM25 score for document chunk $d$ is:
+\begin{equation}
+    \text{BM25}(q, d) = \sum_{t \in T_q} \text{IDF}(t) \cdot \frac{f(t, d) \cdot (k_1 + 1)}{f(t, d) + k_1 \cdot \left(1 - b + b \cdot \frac{|d|}{\text{avgdl}}\right)}
+\end{equation}
+where $f(t, d)$ is term frequency, $|d|$ is chunk token length, $\text{avgdl}$ is average chunk length across the corpus, and standard parameters $k_1 = 1.5$ and $b = 0.75$ are employed.
+
+\subsubsection{Reciprocal Rank Fusion (RRF)}
+When a query $q$ is executed, the retriever pulls the top $K_{\text{init}} = 20$ candidates from FAISS ($\mathcal{L}_{\text{dense}}$) and the top $K_{\text{init}} = 20$ candidates from BM25 ($\mathcal{L}_{\text{lex}}$). These disparate ranked lists are fused using Reciprocal Rank Fusion:
+\begin{equation}
+    \text{RRF Score}(d) = \sum_{m \in \{\text{dense}, \text{lex}\}} \frac{w_m}{k_{\text{rrf}} + r_m(d)}
+\end{equation}
+where $k_{\text{rrf}} = 60$ is the standard smoothing parameter, $w_{\text{dense}} = 1.0$, $w_{\text{lex}} = 1.0$, and $r_m(d)$ is the 1-based rank of document $d$ in list $m$ (or $\infty$ if unranked).
+
+\subsubsection{True Dot-Product Vector Reconstruction}
+A critical challenge in rank-based fusion is that candidates recovered solely through lexical BM25 lack dense similarity scores. MailMind resolves this by utilizing FAISS's vector reconstruction capability: for each lexical-only candidate with vector ID $\text{vid}$, the pipeline reconstructs its exact dense embedding:
+\begin{equation}
+    \mathbf{v}_{\text{recon}} = \text{store.index.reconstruct}(\text{vid})
+\end{equation}
+and computes its true semantic dot product: $S_{\text{semantic}} = \langle \mathbf{q}, \mathbf{v}_{\text{recon}} \rangle$. This ensures that all fused candidates possess calibrated dense similarity scores prior to reranking.
+
+\subsection{Reranking, Deduplication, and Context Construction}
+\subsubsection{Query Intent and Entity Analysis}
+Prior to reranking, \texttt{rag/query\_analyzer.py} executes linguistic feature extraction over query $q$:
+\begin{itemize}
+    \item \textbf{Entity Extraction:} Identifies capitalized proper nouns, alphanumeric course codes (e.g., regex pattern \texttt{[A-Z]{3,4}[0-9]{3,4}}), and target company names.
+    \item \textbf{Temporal Intent Detection:} Flags temporal queries based on keywords (\textit{today, tomorrow, schedule, upcoming, deadline, dates, semester}) and extracts target calendar years/months.
+    \item \textbf{Sender Recognition:} Identifies target sender entities (e.g., \textit{``Dean Academics'', ``CDC'', ``Placement Office''}).
+\end{itemize}
+
+\subsubsection{Multi-Signal Metadata Reranker}
+The candidate pool retrieved from hybrid fusion is scored using a two-tier scoring framework (\texttt{rag/reranker.py}). First, a normalized base score is calculated as a convex combination of five core signals plus bounded contextual bonuses:
+\begin{equation}
+\label{eq:base_score}
+\begin{aligned}
+    \text{Base Score}(d) ={} & 0.45 \cdot S_{\text{semantic}}(d) + 0.20 \cdot S_{\text{subject}}(d) \\
+    & + 0.15 \cdot S_{\text{sender}}(d) + 0.10 \cdot S_{\text{entity}}(d) \\
+    & + 0.10 \cdot S_{\text{body}}(d) + \Delta_{\text{bonuses}}(d)
+\end{aligned}
+\end{equation}
+where the base feature weights sum strictly to unity ($0.45 + 0.20 + 0.15 + 0.10 + 0.10 = 1.00$). The auxiliary term $\Delta_{\text{bonuses}}(d)$ accounts for bounded contextual features:
+\begin{itemize}
+    \item \textbf{Venue Match Bonus:} $+0.10 \cdot S_{\text{venue}}$ when the query contains venue-seeking intent.
+    \item \textbf{Query Bigram Bonus:} $+0.08$ when consecutive query token bigrams appear verbatim in the candidate text.
+    \item \textbf{Month/Year Congruence:} $+0.12$ when the email timestamp matches the queried month and year, or a $-0.05$ penalty if mismatched.
+    \item \textbf{Date Constraint Satisfaction:} $\pm 0.10$ to $-0.30$ based on compliance with explicit temporal window filters.
+\end{itemize}
+
+Second, if explicit temporal intent is detected (e.g., upcoming schedules or recency queries), an additive temporal score ($S_{\text{temporal}}$) is weighted by $0.30$:
+\begin{equation}
+\label{eq:rerank_temporal}
+    S_{\text{final}}(d) = \text{Base Score}(d) + 0.30 \cdot S_{\text{temporal}}(d)
+\end{equation}
+where $S_{\text{temporal}}$ computes exponential proximity or normalized recency. For general queries with dated candidates, a subtle linear freshness prior ($S_{\text{freshness}} = \frac{t - t_{\min}}{t_{\max} - t_{\min}}$) is applied instead:
+\begin{equation}
+\label{eq:rerank_freshness}
+    S_{\text{final}}(d) = \text{Base Score}(d) + 0.10 \cdot S_{\text{freshness}}(d)
+\end{equation}
+Candidates failing the minimum similarity threshold ($S_{\text{final}} \ge 0.25$) are pruned prior to deduplication.
+
+\subsubsection{Message-Level Deduplication}
+When multiple candidate chunks originate from the same parent email (sharing identical \texttt{message\_id}), MailMind retains only the single chunk with the highest composite score:
+\begin{equation}
+    \mathcal{C}_{\text{dedup}} = \arg\max_{c \in \text{Chunks}(m)} S_{\text{final}}(c)
+\end{equation}
+This eliminates redundant circular fragments and ensures that the final $K_{\text{final}} = 5$ slots are populated by distinct emails.
+
+\subsection{RAG-Based Answer Generation and Evidence Attribution}
+The top 5 reranked emails are formatted into an evidence context block:
+\begin{equation}
+    \text{Context} = \bigcup_{k=1}^5 \text{``[Source } k \text{] Subject: } s_k \text{ | From: } a_k \text{ | Date: } t_k \text{\textbackslash n} b_k \text{''}
+\end{equation}
+The formatted context and user query are injected into an evidence-bounding system prompt (\texttt{rag/prompt.py}). Conditioned on this prompt, Google Gemini 3.5 Flash-Lite synthesizes an answer using the modern \texttt{google-genai} SDK. The prompt enforces three strict operational constraints:
+\begin{enumerate}
+    \item \textbf{Context Closure:} The model must answer exclusively using facts asserted in the provided \texttt{[Source $k$]} blocks. It is explicitly forbidden from drawing upon unmentioned external knowledge.
+    \item \textbf{Explicit Source Citation:} Every factual statement must cite its supporting source using bracketed indicators (e.g., \textit{``The written assessment is scheduled for Friday at 10:00 AM [Source 1].''}).
+    \item \textbf{Refusal Protocol:} If the context does not contain sufficient facts to answer the question completely, the model is instructed to state that the mailbox does not contain sufficient information.
+\end{enumerate}
+
+\subsection{Abstention and Handling of Unsupported Queries}
+To prevent hallucinations on unanswerable or out-of-domain queries, MailMind implements a \textbf{two-tier abstention mechanism}:
+\begin{enumerate}
+    \item \textbf{Pre-Generation Similarity Thresholding:} Following reranking, all candidates must satisfy a minimum similarity threshold: $S_{\text{final}} \ge 0.25$. If zero candidates exceed this threshold, retrieval returns an empty context set ($|R_q| = 0$).
+    \item \textbf{Deterministic Zero-Call Fallback:} If the retrieved context is empty, \texttt{pipeline.ask()} immediately returns a standardized refusal message (\textit{``I couldn't find any relevant emails in your mailbox for this query. Please try rephrasing your question.''}) without making a network call to the Gemini API. This eliminates API latency and monetary cost while guaranteeing a 0\% hallucination rate on unanswerable inputs.
+\end{enumerate}
+Importantly, pre-generation abstention is decoupled from post-generation groundedness: thresholding prevents generation on empty context, but does not prevent an LLM from extrapolating ungrounded details when relevant context is supplied.
+
+\subsection{Implementation Details and Thread-Safe Freshness}
+To support production deployment where emails are ingested concurrently while users query the system via Streamlit, MailMind introduces a signature-based dynamic reload protocol (\texttt{rag/vector\_store.py}):
+\begin{itemize}
+    \item The vector store maintains a 4-tuple disk signature:
+    \begin{equation}
+        \sigma_{\text{disk}} = (\text{mtime}_{\text{faiss}}, \text{size}_{\text{faiss}}, \text{mtime}_{\text{meta}}, \text{size}_{\text{meta}})
+    \end{equation}
+    \item On every query or UI interaction, \texttt{reload\_if\_changed()} executes an \texttt{os.stat} check in $\approx 2\,\mu\text{s}$. If $\sigma_{\text{disk}}$ matches the in-memory signature, the method returns \texttt{False} immediately.
+    \item If file modification is detected, the store acquires \texttt{self.\_lock = threading.RLock()}, reloads FAISS and metadata into memory, and increments an internal counter \texttt{self.\_version}.
+    \item In \texttt{rag/hybrid\_retriever.py}, \texttt{get\_bm25\_index()} checks whether \texttt{index.\_store\_version == store.version}. When a version mismatch is detected, the BM25 index automatically rebuilds from the updated metadata under lock.
+    \item During disk persistence in \texttt{VectorStore.save()}, files are written to temporary files (\texttt{.tmp}) and replaced using a 5-attempt retry loop with exponential backoff on \texttt{PermissionError}, preventing Windows file-locking collisions during concurrent read/write operations.
+\end{itemize}
+
+---
+
+\section{Experimental Setup}
+
+\subsection{Experimental Environment and Software Stack}
+All experiments were conducted on a dedicated workstation running 64-bit Windows 11, equipped with an Intel Core i5 CPU, 16~GB DDR4 RAM, and high-speed NVMe SSD storage. The software stack utilizes Python 3.12.0, FAISS-CPU 1.10.0, PyTorch 2.6.0, SentenceTransformers 3.4.1, Keras 3.8.0 / TensorFlow 2.18.0, Pydantic 2.10.6, FastAPI 0.115.8, Streamlit 1.42.0, and the official Google GenAI SDK (\texttt{google-genai} 1.3.0).
+
+\subsection{Email Collection and Data Preparation}
+The experimental email corpus comprises personal institutional and academic correspondence collected from students at Vellore Institute of Technology (VIT), Vellore, India. The dataset was preprocessed into \texttt{email\_classification\_dataset.parquet} and loaded into MongoDB and the local FAISS index. The indexed corpus contains exactly **10,782 unique emails**, partitioned into **13,297 document chunks** (each 400 words with 50-word overlap and prepended metadata headers). All personal identifiers (student registration numbers, private mobile numbers, personal tokens) were sanitized or replaced with synthetic equivalents in compliance with data privacy standards.
+
+\subsection{Benchmark Construction and Query Categories}
+To evaluate retrieval and RAG quality rigorously without data leakage, we created a frozen benchmark dataset, \texttt{evaluation/benchmark\_v1.json} (version 1.0.0). The benchmark comprises **50 queries** spanning 8 realistic functional categories:
+\begin{enumerate}
+    \item \texttt{placement} ($N=21$): Corporate recruitment drives, eligibility criteria, internship selection lists, test links, interview schedules (e.g., Google, Microsoft, TCS, Cognizant, Matrecomm).
+    \item \texttt{academic} ($N=9$): Course registrations, NPTEL/SWAYAM credit transfer, grade allocations, academic calendar circulars.
+    \item \texttt{schedules\_venues} ($N=5$): Venue announcements, classroom allocations, technical workshop schedules.
+    \item \texttt{security} ($N=4$): Password reset alerts, Wi-Fi authentication notices, phishing warnings.
+    \item \texttt{sender\_based} ($N=4$): Circulars filtered by organizational sender identity (e.g., \textit{``Emails from Dean Academics''}).
+    \item \texttt{temporal} ($N=2$): Time-delimited queries requiring recency ranking (e.g., \textit{``Placement emails received this week''}).
+    \item \texttt{summarization} ($N=2$): Broad multi-email synthesis requests (e.g., \textit{``Summarize recent campus placement drives''}).
+    \item \texttt{irrelevant} ($N=3$): Negative out-of-domain queries with no relevant documents in the corpus (e.g., \textit{``Flight booking confirmation to London'', ``Netflix subscription payment receipt''}).
+\end{enumerate}
+
+\subsection{Relevance Labels and Evaluation Protocol}
+The benchmark contains **105 graded relevance judgments** created through human inspection of the 10,782-email corpus. Relevance grades follow a 3-point scale:
+\begin{itemize}
+    \item \textbf{Grade 2 (Directly Relevant):} The email contains exact, authoritative answers to the query.
+    \item \textbf{Grade 1 (Partially Relevant):} The email discusses the same event or subject but lacks specific detail (e.g., an amendment or reminder).
+    \item \textbf{Grade 0 (Irrelevant):} The email is unrelated to the user query.
+\end{itemize}
+100\% of the ground-truth document IDs were verified present in the indexed corpus.
+
+To evaluate generalization and prevent hyper-parameter overfitting, the benchmark is divided into two distinct, non-overlapping splits:
+\begin{itemize}
+    \item \textbf{Development Split (\texttt{dev}):} 14 queries (13 domain-answerable queries + 1 negative query), used to tune reranking weights and thresholds.
+    \item \textbf{Frozen Test Split (\texttt{test}):} 36 queries (34 domain-answerable queries + 2 negative queries), evaluated strictly without parameter modification.
+\end{itemize}
+
+\subsection{Retrieval Metrics}
+Retrieval effectiveness is evaluated using standard IR metrics across cutoffs $k \in \{5, 10, 20\}$:
+\begin{itemize}
+    \item \textbf{Recall@$k$:} The fraction of all relevant documents (grades 1 and 2) retrieved within the top $k$ positions:
+    \begin{equation}
+        \text{Recall@}k = \frac{|\mathcal{R}_k \cap \mathcal{Rel}|}{|\mathcal{Rel}|}
+    \end{equation}
+    \item \textbf{Success@10 (Hit Rate):} A binary indicator whether at least one directly relevant document (grade 2) is retrieved in the top 10 positions.
+    \item \textbf{Precision@$k$:} The proportion of retrieved documents in the top $k$ that are relevant.
+    \item \textbf{MRR (Mean Reciprocal Rank):} The reciprocal rank of the first relevant document.
+    \item \textbf{NDCG@10:} Normalized Discounted Cumulative Gain at rank 10 using graded relevance.
+    \item \textbf{Negative False-Positive Rate:} The proportion of negative out-of-domain queries where the retriever incorrectly returns at least one candidate passing thresholding.
+\end{itemize}
+
+\subsection{RAG Evaluation and Judging Methodology}
+RAG generation was evaluated across **18 curated representative queries** containing verified reference answers and key evidence checklists. Answer synthesis used Gemini 3.5 Flash-Lite conditioned on the top 5 reranked context documents. Answer quality was measured using the **LLM-as-a-Judge** protocol (\texttt{evaluation/rag\_eval.py}) powered by Gemini with explicit 1--5 Likert scoring rubrics, normalized to $[0.0, 1.0]$:
+\begin{enumerate}
+    \item \textbf{Answer Correctness (1--5):} Factual concordance with verified ground-truth reference answers.
+    \item \textbf{Groundedness / Faithfulness (1--5):} Verification whether every assertion in the generated answer is strictly entailed by the retrieved context, penalizing ungrounded extrapolations.
+    \item \textbf{Answer Relevance (1--5):} Responsiveness to the specific user inquiry.
+    \item \textbf{Citation Correctness (1--5):} Verification that bracketed source citations (\texttt{[Source $k$]}) accurately correspond to the cited emails.
+    \item \textbf{Abstention Accuracy:} Verification that out-of-domain queries elicit refusal without hallucinations.
+    \item \textbf{Unsupported Claims Count:} Direct count of atomic hallucinated claims detected across all queries.
+\end{enumerate}
+
+\subsection{Classification Evaluation}
+The BiLSTM classifier was evaluated on a strictly held-out test split of **542 emails** (10\% stratified sample of the 5,420-email dataset, random seed 42). Metrics include overall classification accuracy, macro-averaged precision, recall, and F1-score, weighted F1-score, and per-class performance for \texttt{general}, \texttt{important}, and \texttt{spam}.
+
+\subsection{Reliability Tests and Latency Measurement}
+System reliability was evaluated through an automated test suite containing 7 deterministic health checks (\texttt{evaluation/reliability\_eval.py}): email parsing, classifier inference paths, FAISS vector-metadata mapping consistency, retrieval source attribution schemas, RAG abstention without API calls, duplicate ingestion idempotency, and Pub/Sub webhook JWT security rejection.
+
+Latency was profiled using \texttt{time.perf_counter()} over repeated warm executions on CPU, separately measuring query embedding, FAISS search, BM25 search, reranking, context assembly, end-to-end retrieval, and Gemini API generation.
+
+---
+
+\section{Results}
+
+\subsection{Retrieval Effectiveness}
+Table~\ref{tab:retrieval_results} presents the comparative retrieval performance of the **Legacy Retriever** (pure FAISS dense retrieval without BM25, query analysis, or multi-signal reranking) versus the **Improved Retriever** (hybrid FAISS + BM25, RRF fusion, query understanding, and 6-signal reranking) across the full benchmark and both splits.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Retrieval performance comparison: Legacy vs. Improved Retriever across benchmark splits.}
+\label{tab:retrieval_results}
+\begin{tabularx}{\textwidth}{l l c c c c c}
+\toprule
+\textbf{Benchmark Split} & \textbf{Retriever Mode} & \textbf{Recall@5} & \textbf{Recall@10} & \textbf{Recall@20} & \textbf{Success@10} & \textbf{Negative FP Rate} \\
+\midrule
+\multirow{2}{*}{\textbf{Full Benchmark} ($N=50$)} & Legacy & 50.00\% & 57.45\% & 68.26\% & 72.34\% & 3/3 (100.0\%) \\
+& \textbf{Improved (MailMind)} & \textbf{72.52\%} & \textbf{81.74\%} & \textbf{85.28\%} & \textbf{89.36\%} & \textbf{0/3 (0.00\%)} \\
+\midrule
+\multirow{2}{*}{\textbf{Frozen Test Set} ($N=36$)} & Legacy & 49.51\% & 53.92\% & 64.95\% & 70.59\% & 2/2 (100.0\%) \\
+& \textbf{Improved (MailMind)} & \textbf{70.34\%} & \textbf{79.17\%} & \textbf{82.60\%} & \textbf{85.29\%} & \textbf{0/2 (0.00\%)} \\
+\midrule
+\multirow{2}{*}{\textbf{Development Set} ($N=14$)} & Legacy & 51.28\% & 66.67\% & 76.92\% & 76.92\% & 1/1 (100.0\%) \\
+& \textbf{Improved (MailMind)} & \textbf{78.21\%} & \textbf{88.46\%} & \textbf{92.31\%} & \textbf{100.00\%} & \textbf{0/1 (0.00\%)} \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.88\textwidth]{figures/figure4_retrieval_effectiveness.png}
+\caption{Retrieval effectiveness comparison across cutoffs and splits, highlighting the project's 80\% engineering target.}
+\label{fig:retrieval_bars}
+\end{figure}
+
+On the full benchmark, the Improved Retriever achieves substantial, statistically significant gains across all evaluation cutoffs:
+\begin{itemize}
+    \item \textbf{Recall@10} improves from 57.45\% to \textbf{81.74\%} ($+24.29\%$ absolute gain), surpassing the project's 80.0\% engineering target.
+    \item \textbf{Recall@20} increases from 68.26\% to \textbf{85.28\%} ($+17.02\%$).
+    \item \textbf{Success@10} increases from 72.34\% to \textbf{89.36\%} ($+17.02\%$), demonstrating that nearly 9 out of 10 user queries locate a directly relevant email in the top 10 results.
+    \item \textbf{Negative False-Positive Rejection:} Legacy retrieval returned false-positive matches for all negative queries (100\% FP). Improved retrieval achieves a \textbf{0.0\% false-positive rate} (0/3 full, 0/2 test, 0/1 dev), successfully suppressing all unanswerable queries.
+\end{itemize}
+
+As visualized in Figure~\ref{fig:retrieval_bars}, \textbf{Recall@5} increases markedly from 50.00\% to \textbf{72.52\%} ($+22.52\%$), although it remains below the ambitious 80.0\% target. Section 6 provides an in-depth error analysis explaining this behavior.
+
+\subsection{Frozen Test-Set Performance}
+On the strictly held-out frozen test set (34 domain-answerable queries + 2 negative queries):
+\begin{itemize}
+    \item \textbf{Recall@10} reaches \textbf{79.17\%} (vs. 53.92\% legacy, $+25.25\%$). While slightly below the 80.0\% mark, it confirms robust generalization without severe degradation from development tuning.
+    \item \textbf{Recall@20} achieves \textbf{82.60\%} (vs. 64.95\% legacy).
+    \item \textbf{Success@10} reaches \textbf{85.29\%} (vs. 70.59\% legacy).
+    \item \textbf{MRR} reaches \textbf{0.746} (vs. 0.569 legacy), and \textbf{NDCG@10} reaches \textbf{0.721} (vs. 0.507 legacy).
+\end{itemize}
+
+\subsection{Category-Wise Retrieval Performance}
+Table~\ref{tab:category_breakdown} and Figure~\ref{fig:category_breakdown} break down the retrieval effectiveness of MailMind across specific functional categories on the full benchmark.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Category-wise retrieval performance (Improved Retriever, Full Benchmark).}
+\label{tab:category_breakdown}
+\begin{tabular}{l c c c c c}
+\toprule
+\textbf{Category} & \textbf{Queries} & \textbf{Recall@5} & \textbf{Recall@10} & \textbf{Recall@20} & \textbf{Success@10} \\
+\midrule
+\texttt{academic} & 9 & 83.33\% & 83.33\% & 88.89\% & 100.00\% \\
+\texttt{placement} & 21 & 76.59\% & 84.13\% & 87.30\% & 90.48\% \\
+\texttt{schedules\_venues} & 5 & 100.00\% & 100.00\% & 100.00\% & 100.00\% \\
+\texttt{security} & 4 & 75.00\% & 100.00\% & 100.00\% & 100.00\% \\
+\texttt{sender\_based} & 4 & 12.50\% & 37.50\% & 37.50\% & 50.00\% \\
+\texttt{temporal} & 2 & 25.00\% & 37.50\% & 50.00\% & 50.00\% \\
+\texttt{summarization} & 2 & 75.00\% & 100.00\% & 100.00\% & 100.00\% \\
+\texttt{irrelevant} (neg.) & 3 & N/A & N/A & N/A & 0\% FP (100\% Rej.) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.88\textwidth]{figures/figure5_category_breakdown.png}
+\caption{Category-wise performance profile under the Improved Retriever, illustrating strong performance on placement and academic queries alongside open challenges in sender-based and temporal queries.}
+\label{fig:category_breakdown}
+\end{figure}
+
+The category analysis reveals clear operational patterns:
+\begin{itemize}
+    \item \textbf{High-Performing Categories:} MailMind excels on \texttt{schedules\_venues} (100.0\% Recall@10, 100.0\% Success@10), \texttt{security} (100.0\% Recall@10), \texttt{academic} (83.33\% Recall@10), and \texttt{placement} (84.13\% Recall@10). The combination of BM25 exact course-code matching and dense company semantic matching successfully recovers complex circulars.
+    \item \textbf{Challenging Categories:} Performance is notably lower on \texttt{sender\_based} queries (Recall@10 = 37.50\%) and \texttt{temporal} queries (Recall@10 = 37.50\%). Queries such as \textit{``Emails from Dean Academics''} often match hundreds of circulars signed by the Dean; retrieving the exact manually annotated subsets in top 10 without additional thematic keywords remains difficult.
+\end{itemize}
+
+\subsection{RAG Answer Quality and Evidence Grounding}
+Table~\ref{tab:rag_quality} summarizes the evaluation of RAG answer generation evaluated via LLM-as-a-judge across 18 curated benchmark queries.
+
+\begin{table}[t]
+\centering
+\small
+\caption{RAG answer generation quality metrics (18 Curated Queries, Gemini 3.5 Flash-Lite).}
+\label{tab:rag_quality}
+\begin{tabular}{l c c l}
+\toprule
+\textbf{Metric} & \textbf{Measured Score} & \textbf{Target} & \textbf{Operational Definition} \\
+\midrule
+Answer Correctness & \textbf{95.80\%} & $\ge 85.00\%$ & Factual concordance with reference answer \\
+Answer Relevance & \textbf{100.00\%} & $\ge 90.00\%$ & Direct responsiveness to inquiry \\
+Citation Correctness & \textbf{87.50\%} & $\ge 85.00\%$ & Accurate attribution to retrieved sources \\
+Groundedness / Faithfulness & \textbf{83.30\%} & $\ge 90.00\%$ & Strict context support; 13 ungrounded claims detected \\
+Abstention Accuracy & \textbf{100.00\%} & 100.00\% & Correct refusal on negative queries (0 API calls) \\
+Unsupported Claims Count & \textbf{13} & 0 & Total ungrounded statements detected across 6 queries \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The RAG pipeline achieves high **Answer Correctness** (95.80\%) and perfect **Answer Relevance** (100.00\%). Furthermore, **Abstention Accuracy** is 100.0\%: on negative out-of-domain queries, the system reliably refused to fabricate answers without invoking the Gemini API. **Citation Correctness** reached 87.50\%, with generated statements properly tagged with bracketed source identifiers.
+
+However, **Groundedness / Faithfulness** was measured at \textbf{83.30\%}, falling below the 90.00\% target, with exactly 13 ungrounded factual assertions detected across 6 placement and scheduling queries. Forensic analysis revealed that these 13 unsupported statements fell into three distinct categories: (1) \textit{parametric boilerplate extrapolation} (8 claims in q21 and q32, where the LLM introduced standard university placement rules such as formal dress or headphone requirements not present in the retrieved snippet), (2) \textit{context truncation boundary extrapolation} (2 claims in q13 and q16, where the model guessed truncated registration IDs or dates), and (3) \textit{citation misattribution} (3 claims in q10, where assessment timing was incorrectly attributed to [Source 3]).
+
+\subsection{Email Classification Performance}
+Table~\ref{tab:classifier_results} details the performance of the BiLSTM email classifier on the held-out test split of 542 emails. Figure~\ref{fig:confusion_matrix} displays the corresponding confusion matrix.
+
+\begin{table}[t]
+\centering
+\small
+\caption{BiLSTM email priority classifier performance (Held-out Test Split, $N=542$).}
+\label{tab:classifier_results}
+\begin{tabular}{l c c c c}
+\toprule
+\textbf{Class} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} & \textbf{Support} \\
+\midrule
+\texttt{general} & 86.67\% & 88.14\% & 87.39\% & 236 \\
+\texttt{important} & 80.15\% & 76.76\% & 78.42\% & 142 \\
+\texttt{spam} & 98.80\% & 100.00\% & 99.39\% & 164 \\
+\midrule
+\textbf{Overall Accuracy} & \multicolumn{3}{c}{\textbf{88.75\%}} & 542 \\
+\textbf{Macro Average} & \textbf{88.54\%} & \textbf{88.30\%} & \textbf{88.40\%} & 542 \\
+\textbf{Weighted Average} & \textbf{88.63\%} & \textbf{88.75\%} & \textbf{88.67\%} & 542 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.55\textwidth]{figures/figure6_classifier_confusion_matrix.png}
+\caption{Confusion matrix of the BiLSTM classifier on the held-out test split ($N=542$).}
+\label{fig:confusion_matrix}
+\end{figure}
+
+The BiLSTM model achieves an overall accuracy of **88.75\%** and a macro-F1 score of **88.40\%** (weighted-F1: 88.67\%). The model exhibits near-perfect discrimination on the \texttt{spam} class (98.80\% precision, 100.0\% recall, 99.39\% F1), confirming that commercial advertisements are quarantined effectively without corrupting the index. The primary source of classification error arises between \texttt{general} and \texttt{important} circulars (27 general emails predicted important; 32 important emails predicted general), reflecting the nuanced boundary between general institutional notices and student-specific requirements.
+
+\subsection{System Reliability and Ingestion Behaviour}
+The automated reliability test suite confirmed that all **7 out of 7** deterministic system checks passed:
+\begin{enumerate}
+    \item \texttt{email\_parsing\_and\_metadata\_preservation}: Passed (0.15~ms).
+    \item \texttt{classification\_and\_spam\_handling\_paths}: Passed (1144.57~ms cold initialization).
+    \item \texttt{embedding\_and\_index\_consistency}: Passed (dim=384, $N=13,297$, 10.21~ms).
+    \item \texttt{retrieval\_and\_source\_attribution}: Passed (37.52~ms).
+    \item \texttt{rag\_abstention\_and\_error\_handling}: Passed (0.01~ms, zero API call).
+    \item \texttt{duplicate\_ingestion\_and\_idempotency}: Passed (22.58~ms, duplicate chunks rejected).
+    \item \texttt{gmail\_pubsub\_security\_health}: Passed (207.19~ms, HTTP 401 on forged tokens).
+\end{enumerate}
+
+Furthermore, regression testing in \texttt{tests/test\_streamlit\_realtime\_ingestion.py} confirmed that emails ingested while Streamlit was running were detected via \texttt{reload\_if\_changed()} in under 5~$\mu$s, rebuilding the BM25 index and becoming immediately queryable without UI restart.
+
+\subsection{Latency and Computational Considerations}
+Table~\ref{tab:latency} and Figure~\ref{fig:latency} provide the granular latency profile of MailMind profiled on an Intel Core i5 CPU.
+
+\begin{table}[t]
+\centering
+\small
+\caption{Granular latency profile of MailMind components.}
+\label{tab:latency}
+\begin{tabular}{l c l}
+\toprule
+\textbf{Pipeline Stage} & \textbf{Latency} & \textbf{Execution Scope} \\
+\midrule
+SentenceTransformer Embedding & 12.48~ms & Query vectorization (\texttt{all-MiniLM-L6-v2}) \\
+FAISS Dense Vector Search & 1.47~ms & Inner product search over 13,297 vectors \\
+BM25 Lexical Inverted Search & 1.87~ms & Token inverted index candidate retrieval \\
+Metadata Reranking \& Dedup & 17.49~ms & 6-weight scoring and chunk deduplication \\
+Context Assembly & 0.10~ms & Evidence extraction and snippet assembly \\
+\midrule
+\textbf{Isolated Subtotal} & \textbf{33.41~ms} & Sum of isolated micro-benchmarks \\
+\textbf{Total End-to-End Retrieval} & \textbf{51.10~ms} & Measured in \texttt{retrieve\_with\_context} \\
+\midrule
+Gemini LLM Answer Generation & 3480.33~ms & Cloud network round-trip and synthesis \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.88\textwidth]{figures/figure7_latency_breakdown.png}
+\caption{Granular latency profile, illustrating the micro-benchmark breakdown of CPU retrieval stages (left) and total system-level latency including cloud LLM generation (right).}
+\label{fig:latency}
+\end{figure}
+
+\subsubsection{Arithmetic Consistency Analysis}
+As noted in the project audit, the sum of isolated component micro-benchmarks ($12.48 + 1.47 + 1.87 + 17.49 + 0.10 = 33.41$~ms) does not arithmetically equal the measured end-to-end retrieval latency of \textbf{51.10~ms}. 
+
+Tracing the timing code in \texttt{evaluation/reliability\_eval.py} reveals the technical reason for this 17.69~ms difference:
+The isolated micro-benchmarks measure individual functions in isolation over pre-extracted candidate arrays. In contrast, the end-to-end \texttt{retrieve\_with\_context()} pipeline performs additional operations: (i) regex-based query intent and entity analysis in \texttt{analyze\_query()}, (ii) Reciprocal Rank Fusion calculation over the fused candidate lists, (iii) on-demand FAISS dense vector reconstruction (\texttt{store.index.reconstruct}) for BM25 candidates to calculate exact dot products, (iv) threshold filtering ($0.25$), and (v) Python object conversion into typed \texttt{SearchResult} Pydantic models. 
+
+Total retrieval executes in approximately 51~ms on CPU, representing less than 1.5\% of overall user response time, which is overwhelmingly dominated by the cloud LLM network generation call ($\approx 3.48$~s).
+
+---
+
+\section{Discussion}
+
+\subsection{Interpretation of the Retrieval Results}
+The experimental results demonstrate that hybrid dense-lexical retrieval coupled with multi-signal reranking produces marked improvements over conventional single-stage dense retrieval in personal email collections. The $+24.29\%$ absolute gain in Recall@10 and $+17.02\%$ gain in Success@10 confirm that dense vector representations alone struggle in personal email retrieval. In campus and corporate communications, critical distinctions depend on specific acronyms, company names, course codes, and interview rounds. BM25 effectively rescues these exact-match candidates from low dense ranks, while Reciprocal Rank Fusion ($k=60$) successfully elevates them into the candidate pool without corrupting dense semantic ranking.
+
+\subsection{Why Recall@5 Remained Below the 80\% Target}
+A critical empirical finding is that while Recall@10 (81.74\%) and Recall@20 (85.28\%) surpassed the project's engineering targets, **Recall@5** reached 72.52\% on the full benchmark and 70.34\% on the frozen test set, failing to reach the 80.0\% goal. 
+
+Qualitative inspection of retrieval failures reveals the fundamental cause: **Multi-Circular Event Dispersion**. Major corporate placement drives (e.g., TCS, Cognizant, or Honeywell) frequently distribute between 4 and 8 distinct official circulars spanning several weeks: an initial registration announcement, an amendment, a practice test link, an eligibility shortlist, a venue schedule, and interview slot updates. In our benchmark, all directly and partially relevant circulars are included in the ground truth. When an event comprises 6 relevant circulars, mathematical pigeonhole constraints prevent any retriever from achieving 100\% recall within a top-5 cutoff ($k=5$). By expanding the context window to $k=10$, Recall increases by nearly 10 percentage points, capturing the full chronological thread.
+
+\subsection{Grounded Generation and Decoupled Abstention}
+The RAG generation evaluation confirms the efficacy of evidence-bounding system prompts. By enforcing that answers cite specific bracketed source tags and penalizing unsupported assertions, Gemini achieved 95.80\% Answer Correctness and 87.50\% Citation Correctness. More importantly, pre-generation similarity thresholding ($0.25$) enabled **100\% accurate abstention** on out-of-domain queries. When presented with questions concerning flight bookings or streaming subscriptions, the retriever generated empty context blocks, prompting the pipeline to return clean refusals without invoking the Gemini API.
+
+However, the measured Groundedness of 83.30\% (with 13 unsupported statements detected) highlights that frontier commercial LLMs retain a persistent tendency toward mild parametric extrapolation and boilerplate completion. Even when explicitly instructed to rely solely on context, models occasionally generate conversational connective phrasing, infer standard institutional testing dress codes, or normalize dates in ways not literally stated in the email snippets. This confirms that pre-generation abstention and post-generation groundedness are fundamentally decoupled properties, each requiring dedicated algorithmic safeguards.
+
+\subsection{Real-Time Ingestion and Retrieval Freshness}
+The integration of Google Pub/Sub webhooks, OIDC JWT verification, and signature-based dynamic cache reloading addresses a major practical barrier in client-server RAG deployments. In standard implementations, updating a FAISS index requires reloading the index file across all active processes. By leveraging an atomic temporary-file swap with Windows backoff retries and a microsecond disk signature comparison, MailMind allows background sync workers to write updated vectors while running Streamlit UI instances seamlessly detect changes on the very next query.
+
+---
+
+\section{Limitations and Threats to Validity}
+
+\subsection{Benchmark Size and Domain Representativeness}
+While the evaluation benchmark comprises 50 rigorously curated queries and 105 graded relevance judgments, the sample size remains modest compared to multi-thousand web search benchmarks. In particular, the negative out-of-domain query set ($N=3$ full, $N=2$ test) is small. Although MailMind achieved a 0\% false-positive rate (100\% abstention), this small sample introduces higher statistical uncertainty regarding rejection thresholds across broader adversarial inputs. Furthermore, the dataset reflects university campus and recruitment communications; generalizability to corporate executive correspondence or legal discovery warrants future empirical study.
+
+\subsection{Relevance Labeling Subjectivity}
+Relevance judgments were established by human domain experts familiar with the university placement and academic workflow. Although strict binary and graded guidelines were enforced, relevance in multi-message email threads inherently contains subjective elements, particularly when distinguishing between ``directly relevant'' circulars (e.g., a final shortlist) and ``partially relevant'' notices (e.g., an earlier circular outlining the drive rules).
+
+\subsection{LLM-as-a-Judge Limitations}
+RAG generation metrics were evaluated using Gemini 3.5 Flash-Lite under structured rubrics. While prior research \cite{zheng2023judging} confirms strong correlation between commercial LLM judges and human raters, model-based evaluation can exhibit subtle self-enhancement or verbosity biases. Although MailMind incorporates deterministic rule-based checks as fallbacks, fully independent human cross-annotation remains desirable.
+
+\subsection{Absence of Full Component Ablation Experiments}
+While the comparative results between the Legacy and Improved retrievers demonstrate significant overall gains ($+24.29\%$ in Recall@10), our experiments evaluated the integrated combination of BM25, RRF fusion, query analysis, and 6-signal reranking. The individual marginal contribution of each isolated weight in Equations~(\ref{eq:base_score})--(\ref{eq:rerank_freshness}) was not evaluated through full combinatorial ablation sweeps. Consequently, we claim empirical efficacy for the integrated framework rather than establishing an isolated causal proof for any single sub-weight.
+
+\subsection{Cloud API and Latency Dependence}
+While the retrieval pipeline executes locally in 51.10~ms on CPU, grounded answer generation relies on the external Google Gemini API, requiring an average of 3.48~seconds per query. This introduces internet connectivity dependencies, ongoing API costs, and privacy considerations regarding data transmission to third-party cloud infrastructure.
+
+---
+
+\section{Conclusion and Future Work}
+
+In this paper, we presented \textbf{MailMind}, an integrated hybrid Retrieval-Augmented Generation framework designed for personal email search and grounded summarization. By combining dense sentence embeddings (\texttt{all-MiniLM-L6-v2}) in FAISS with an in-memory BM25 lexical inverted index through Reciprocal Rank Fusion ($k=60$), MailMind overcomes the vocabulary mismatch inherent in alphanumeric email identifiers while preserving semantic paraphrase understanding. A second-stage multi-signal reranker incorporates subject overlap, body match, sender authority, entity alignment, and temporal recency decay while deduplicating candidate chunks by message identifier. Grounded answer generation via Gemini 3.5 Flash-Lite, coupled with pre-generation similarity thresholding, guarantees verifiable source citations and deterministic zero-cost abstention on unanswerable queries. Furthermore, an atomic disk signature detection mechanism ensures retrieval freshness during real-time Gmail Pub/Sub webhook ingestion without requiring application restarts.
+
+Rigorous evaluation across a frozen 50-query benchmark over an indexed corpus of 10,782 emails confirmed that MailMind achieves Recall@10 of 81.74\% (legacy: 57.45\%), Recall@20 of 85.28\%, Success@10 of 89.36\%, Answer Correctness of 95.80\%, Citation Correctness of 87.50\%, and out-of-domain Abstention Accuracy of 100.0\%, with retrieval executing in 51.10~ms on CPU. We transparently documented remaining bottlenecks, including Recall@5 (72.52\%) constrained by multi-circular event dispersion, groundedness (83.30\%) impacted by stylistic extrapolation, and lower performance on temporal and sender-based queries.
+
+Future research will focus on:
+\begin{enumerate}
+    \item Developing specialized query expansion routines for temporal and sender-based queries to improve performance on broad organizational queries.
+    \item Deploying local, quantized open-weight generative models (e.g., Llama-3 or Mistral via vLLM/Ollama) to eliminate external API costs, reduce generation latency, and ensure strict on-device email privacy.
+    \item Expanding the evaluation benchmark across multi-institutional and enterprise corporate datasets with larger negative query distributions.
+    \item Conducting systematic component ablation studies to isolate the individual mathematical contributions of dense versus lexical weights in reciprocal rank fusion.
+\end{enumerate}
+
+---
+
+\section*{Declarations}
+
+\subsection*{Funding}
+The authors received no financial support for the research, authorship, and/or publication of this article.
+
+\subsection*{Competing Interests}
+The authors declared no potential conflicts of interest with respect to the research, authorship, and/or publication of this article.
+
+\subsection*{Data and Code Availability}
+The software implementation, evaluation framework, benchmark definitions, and anonymized evaluation report artifacts supporting the findings of this study are available within the project repository at \url{https://github.com/Nayan172005/MailMind}. The underlying private email correspondence is restricted to protect institutional and personal privacy.
+
+\subsection*{Ethics Approval}
+The email dataset was compiled from institutional circulars received by the student authors. All personal identifiers, including student registration numbers, phone numbers, and private sender addresses, were sanitized prior to indexing. The research was conducted in compliance with institutional data protection standards; formal external ethics committee approval was not required as the study analyzed sanitized institutional notifications without human interventional trials.
+
+\subsection*{Author Contributions}
+\textbf{Nayan Sharma}: Conceptualization, methodology, software architecture, hybrid retrieval implementation, evaluation framework, and manuscript drafting.  
+\textbf{Nabhan Belim}: Data preprocessing, BiLSTM classification pipeline, Gmail OAuth/webhook integration, experimental testing, and manuscript review.  
+\textbf{Amil Mahajan}: Vector indexing, Streamlit user interface, concurrency and cache invalidation engineering, evaluation benchmarking, and manuscript editing.
+
+---
+
+\bibliographystyle{unsrt}
+\bibliography{references}
+
+\end{document}
